@@ -1,0 +1,205 @@
+package keg.derivation
+
+import scala.quoted.Expr
+import scala.quoted.Type
+import scala.quoted.Quotes
+
+def routesImpl()(using q: Quotes) =
+  import q.reflect.*
+
+  val container = This(Symbol.spliceOwner.owner.owner)
+
+  val eps = for
+    m <- container.symbol.declaredMethods
+    annot <- m.annotations
+    if annot.tpe <:< TypeRepr.of[keg.derivation.BaseApi#EndpointAnnotation]
+  yield
+    endpointImpl(m, annot)
+
+  '{
+    new keg.model.Routes:
+      def endpoints: Seq[keg.model.Endpoint] = ${Expr.ofSeq(eps)}
+      def paths: keg.model.Paths = new keg.model.Paths {}
+  }
+
+/** Generate an endpoint for the given method.
+  *
+  * Assuming the method is defined as:
+  *
+  * ```scala
+  * @app.get("/info/:org/:id")
+  * def getUser(org: String, id: Int, user: User): keg.model.Response = ???
+  * ```
+  *
+  * then the generated invoke function will be equivalent to:
+  * ```scala
+  * (request: keg.model.Request) =>
+  *   var org: String = ""
+  *   var id: Int = 0
+  *   var user: User = null
+  *
+  *   var continue = true
+  *
+  *   summon[app.FromRequest[String]].fromPath(request.pathSegment("org")) match
+  *     case Result.Continue(value) =>
+  *       org = value
+  *     case Result.Respond(response) =>
+  *       return response
+  *   summon[app.FromRequest[Int]].fromPath(request.pathSegment("id")) match
+  *     case Result.Continue(value) =>
+  *       id = value
+  *     case Result.Respond(response) =>
+  *       return response
+  *   summon[app.FromRequest[User]].fromRequest(request) match
+  *     case Result.Continue(value) =>
+  *       user = value
+  *     case Result.Respond(response) =>
+  *       return response
+  *
+  *   getUser(org, id, user)
+  * ```
+  *
+  *
+  */
+def endpointImpl(using qctx: Quotes)(
+  method: qctx.reflect.Symbol,
+  annot: qctx.reflect.Term,
+): Expr[keg.model.Endpoint] =
+  import qctx.reflect.*
+
+  val prefix: Ref = annot.tpe match
+    case TypeRef(prefix: TermRef, _) =>
+      Ref.term(prefix)
+    case _ => report.errorAndAbort("Unexpected annotation type: " + annot.tpe.show)
+
+  val path: String = annot match
+    case Apply(_, pathArg :: _) =>
+      pathArg match
+        case Literal(StringConstant(path)) => path
+        case _ =>
+          report.errorAndAbort("Path is not a string literal: " + pathArg.show, pathArg.pos)
+    case _ =>
+      report.errorAndAbort(s"Unexpected annotation structure: ${annot.show}")
+
+
+  val dynamicSegments =
+    path.split("/").toSeq.filter(_.startsWith(":")).map(_.drop(1))
+
+  def paramChecks(
+    owner: Symbol,
+    prefix: Ref,
+    valss: List[List[Symbol]],
+    req: Expr[keg.model.Request]
+  ) =
+    given Quotes = owner.asQuotes
+
+    for (params, vals) <- method.paramSymss.zip(valss) yield
+      for (param, v) <- params.zip(vals) yield
+        val paramType = v.termRef.widenTermRefByName
+        paramType.asType match
+          case '[t] =>
+            if dynamicSegments.contains(param.name) then
+              val fromPathType = TypeSelect(
+                prefix,
+                "FromPath"
+              ).tpe.appliedTo(paramType)
+              Implicits.search(fromPathType) match
+                case success: ImplicitSearchSuccess =>
+                  '{
+                    val str = $req.pathParams(${Expr(param.name)})
+                    val fp = ${success.tree.asExprOf[keg.derivation.BaseApi#FromPath[t]]}
+                    fp.fromPath(str) match
+                      case Result.Continue(value) =>
+                        ${Assign(Ref(v), 'value.asTerm).asExpr}
+                      case Result.Respond(response) =>
+                        ${Return('response.asTerm, owner).asExpr}
+                  }.asTerm
+
+                case failure: ImplicitSearchFailure =>
+                  report.errorAndAbort(
+                    s"No given instance of FromPath[${paramType.show}] found for parameter '${param.name}'",
+                    param.pos.get
+                  )
+            else
+              val fromRequestType = TypeSelect(
+                prefix,
+                "FromRequest"
+              ).tpe.appliedTo(paramType)
+
+              Implicits.search(fromRequestType) match
+                case success: ImplicitSearchSuccess =>
+                  '{
+                    val fr = ${success.tree.asExprOf[keg.derivation.BaseApi#FromRequest[t]]}
+                    fr.fromRequest($req) match
+                      case Result.Continue(value) =>
+                        ${Assign(Ref(v), 'value.asTerm).asExpr}
+                      case Result.Respond(response) =>
+                        ${Return('response.asTerm, owner).asExpr}
+                  }.asTerm
+                case failure: ImplicitSearchFailure =>
+                  report.errorAndAbort(
+                    s"No given instance of FromRequest[${paramType.show}] found for parameter '${param.name}'",
+                    param.pos.get
+                  )
+
+  val invokeFunc = Lambda(
+    Symbol.spliceOwner,
+    MethodType(
+      List("request")
+    )(
+      _ => List(TypeRepr.of[keg.model.Request]),
+      _ => TypeRepr.of[keg.model.Response]
+    ), {
+      case (sym, List(req)) =>
+        val valSymss = for paramss <- method.paramSymss yield
+          for param <- paramss yield
+            Symbol.newVal(
+              parent = sym,
+              name = param.name + "$value",
+              tpe = param.termRef.widenTermRefByName,
+              flags = Flags.Mutable,
+              privateWithin = Symbol.noSymbol
+            )
+
+        val valDefss = for (paramss, valss) <- method.paramSymss.zip(valSymss) yield
+          for (param, v) <- paramss.zip(valss) yield
+            val rhs = param.termRef.widenTermRefByName match
+              case t if t =:= TypeRepr.of[Byte] => Literal(ByteConstant(0))
+              case t if t =:= TypeRepr.of[Short] => Literal(ShortConstant(0))
+              case t if t =:= TypeRepr.of[Int] => Literal(IntConstant(0))
+              case t if t =:= TypeRepr.of[Long] => Literal(LongConstant(0L))
+              case t if t =:= TypeRepr.of[Char] => Literal(CharConstant('\u0000'))
+              case t if t =:= TypeRepr.of[Boolean] => Literal(BooleanConstant(false))
+              case t if t =:= TypeRepr.of[Float] => Literal(FloatConstant(0.0f))
+              case t if t =:= TypeRepr.of[Double] => Literal(DoubleConstant(0.0))
+              case t => Literal(NullConstant())
+            ValDef(v, Some(rhs))
+
+        val base: Term = Ref(method)
+        val argss = for vals <- valSymss yield
+          for v <- vals yield Ref(v)
+        val application = argss.foldLeft(base)((lhs, args) => Apply(lhs, args))
+
+        Block(
+          valDefss.flatten ++ paramChecks(sym, prefix, valSymss, req.asExprOf[keg.model.Request]).flatten,
+          application
+        )
+    }
+  ).asExprOf[keg.model.Request => keg.model.Response]
+
+
+  '{
+    keg.model.Endpoint(
+      selector = keg.model.EndpointSelector.Simple(
+        path = ${Expr(path)},
+        methods = ${annot.asExprOf[keg.derivation.Api#EndpointAnnotation]}.methods
+      ),
+      invoke = ${invokeFunc},
+      meta = keg.model.EndpointMeta(
+        file = ${Expr(method.pos.get.sourceFile.getJPath.map(_.getFileName().toString).getOrElse("<unknown>"))},
+        line = ${Expr(method.pos.get.startLine + 1)},
+        column = ${Expr(method.pos.get.startColumn + 1)},
+        function = ${Expr(method.fullName)}
+      )
+    )
+  }
