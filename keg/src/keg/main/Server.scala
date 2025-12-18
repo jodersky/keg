@@ -69,8 +69,7 @@ class Server(
           dispatchTrie.add(
             Util.splitPath(sel.path),
             method,
-            endpoint,
-            capturesSubpath = false // TODO
+            endpoint
           ) match
             case DispatchTrie.AddResult.Ok => ()
             case DispatchTrie.AddResult.MethodConflict(path, items) =>
@@ -85,8 +84,7 @@ class Server(
         websocketDispatchTrie.add(
           Util.splitPath(sel.path),
           "GET",
-          endpoint,
-          capturesSubpath = false // TODO
+          endpoint
         ) match
           case DispatchTrie.AddResult.Ok => ()
           case DispatchTrie.AddResult.MethodConflict(path, items) =>

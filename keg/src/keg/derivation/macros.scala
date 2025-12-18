@@ -58,8 +58,6 @@ def routesImpl()(using q: Quotes) =
   *
   *   getUser(org, id, user)
   * ```
-  *
-  *
   */
 def endpointImpl(using qctx: Quotes)(
   method: qctx.reflect.Symbol,
@@ -73,6 +71,7 @@ def endpointImpl(using qctx: Quotes)(
     case _ => report.errorAndAbort("Unexpected annotation type: " + annot.tpe.show)
 
   val path: String = annot match
+    case Apply(_, Nil) => "" // no path argument (this is sort of a hack to support NotFound, etc)
     case Apply(_, pathArg :: _) =>
       pathArg match
         case Literal(StringConstant(path)) => path
@@ -80,7 +79,6 @@ def endpointImpl(using qctx: Quotes)(
           report.errorAndAbort("Path is not a string literal: " + pathArg.show, pathArg.pos)
     case _ =>
       report.errorAndAbort(s"Unexpected annotation structure: ${annot.show}")
-
 
   val dynamicSegments =
     path.split("/").toSeq.filter(_.startsWith(":")).map(_.drop(1))
@@ -208,9 +206,21 @@ def endpointImpl(using qctx: Quotes)(
     }
   ).asExprOf[keg.model.Request => (keg.model.Response | keg.model.WsResponse)]
 
-  val selector = if annot.tpe <:< TypeRepr.of[keg.derivation.BaseApi#WebsockectAnnotation] then
+  val selector = if annot.tpe <:< TypeRepr.of[keg.derivation.BaseApi#WebsocketAnnotation] then
     '{
       keg.model.EndpointSelector.WebSocketUpgrade(${Expr(path)})
+    }
+  else if annot.tpe <:< TypeRepr.of[keg.derivation.BaseApi#NotFoundAnnotation] then
+    '{
+      keg.model.EndpointSelector.NotFound
+    }
+  else if annot.tpe <:< TypeRepr.of[keg.derivation.BaseApi#MethodNotAllowedAnnotation] then
+    '{
+      keg.model.EndpointSelector.MethodNotAllowed
+    }
+  else if annot.tpe <:< TypeRepr.of[keg.derivation.BaseApi#CsrfErrorAnnotation] then
+    '{
+      keg.model.EndpointSelector.CsrfError
     }
   else
     '{

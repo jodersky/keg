@@ -14,6 +14,23 @@ object EndpointTest extends TestSuite:
       server.stop()
 
   val tests = Tests:
+    test("root request"):
+      val endpoints = Seq(
+        keg.Endpoint(
+          selector = keg.EndpointSelector.Simple("/", Seq("GET")),
+          invoke = (req: keg.Request) =>
+            keg.Response(
+              data = "Welcome to the root!",
+            )
+        )
+      )
+
+      withServer(endpoints) { baseUrl =>
+        val response = requests.get(s"$baseUrl/")
+        assert(response.statusCode == 200)
+        assert(response.text() == "Welcome to the root!")
+      }
+
     test("request"):
       val endpoints = Seq(
         keg.Endpoint(
@@ -233,3 +250,122 @@ object EndpointTest extends TestSuite:
         val response = requests.post(s"$baseUrl/hello", check = false)
         assert(response.statusCode == 405)
         assert(response.text() == "This method is not allowed here")
+
+    test("subpath endpoint"):
+      val endpoints = Seq(
+        keg.Endpoint(
+          selector = keg.EndpointSelector.Simple("/files/*", Seq("GET")),
+          invoke = (req: keg.Request) => {
+            val remainingPath = req.remainingPathSegments.mkString("/")
+            keg.Response(
+              data = s"Requested file path: $remainingPath"
+            )
+          }
+        ),
+        keg.Endpoint(
+          selector = keg.EndpointSelector.Simple("/foo/*", Seq("GET")),
+          invoke = (req: keg.Request) => {
+            val remainingPath = req.remainingPathSegments.mkString("/")
+            keg.Response(
+              data = s"Requested foo path: $remainingPath"
+            )
+          }
+        )
+      )
+
+      withServer(endpoints): baseUrl =>
+        val response = requests.get(s"$baseUrl/files/path/to/myfile.txt")
+        assert(response.statusCode == 200)
+        assert(response.text() == "Requested file path: path/to/myfile.txt")
+
+        val response2 = requests.get(s"$baseUrl/foo/some/other/path")
+        assert(response2.statusCode == 200)
+        assert(response2.text() == "Requested foo path: some/other/path")
+
+        val response3 = requests.get(s"$baseUrl/foo/")
+        assert(response3.statusCode == 200)
+        assert(response3.text() == "Requested foo path: ")
+
+        val response4 = requests.get(s"$baseUrl/foo")
+        assert(response4.statusCode == 200)
+        assert(response4.text() == "Requested foo path: ")
+
+    test("static resources"):
+      val endpoints = Seq(
+        keg.Endpoint(
+          selector = keg.EndpointSelector.Simple("/static/*", Seq("GET")),
+          invoke = (req: keg.Request) =>
+            keg.model.Static.staticResources("/foo", req.remainingPathSegments)
+        )
+      )
+
+      withServer(endpoints): baseUrl =>
+        val response = requests.get(s"$baseUrl/static/a.txt", check = false)
+        assert(response.statusCode == 404)
+
+        val response2 = requests.get(s"$baseUrl/static/", check = false)
+        assert(response2.statusCode == 404)
+
+        val response3 = requests.get(s"$baseUrl/static", check = false)
+        assert(response3.statusCode == 404)
+
+        val response4 = requests.get(s"$baseUrl/static/../secret.txt", check = false)
+        assert(response4.statusCode == 404)
+
+        val response5 = requests.get(s"$baseUrl/static/bar/a.txt", check = false)
+        assert(response5.statusCode == 200)
+        assert(response5.text() == "hello, world\n")
+        assert(response5.headers("content-type") == Seq("text/plain; charset=UTF-8"))
+
+        val response6 = requests.get(s"$baseUrl/static/bar/b.png", check = false)
+        assert(response6.statusCode == 200)
+        assert(response6.headers("content-type") == Seq("image/png"))
+
+        val response7 = requests.get(s"$baseUrl/static/bar/template.scala.html", check = false)
+        assert(response7.statusCode == 200)
+        assert(response7.headers("content-type") == Seq("text/html; charset=UTF-8"))
+
+        val response8 = requests.get(s"$baseUrl/static/bar/file", check = false)
+        assert(response8.statusCode == 200)
+        assert(response8.headers("content-type") == Seq("application/octet-stream"))
+
+
+    test("static files"):
+      val endpoints = Seq(
+        keg.Endpoint(
+          selector = keg.EndpointSelector.Simple("/static/*", Seq("GET")),
+          invoke = (req: keg.Request) =>
+            val root = sys.env("MILL_WORKSPACE_ROOT")
+            keg.model.Static.staticFiles(s"$root/keg/test/resources/foo", req.remainingPathSegments)
+        )
+      )
+
+      withServer(endpoints): baseUrl =>
+        val response = requests.get(s"$baseUrl/static/a.txt", check = false)
+        assert(response.statusCode == 404)
+
+        val response2 = requests.get(s"$baseUrl/static/", check = false)
+        assert(response2.statusCode == 404)
+
+        val response3 = requests.get(s"$baseUrl/static", check = false)
+        assert(response3.statusCode == 404)
+
+        val response4 = requests.get(s"$baseUrl/static/../secret.txt", check = false)
+        assert(response4.statusCode == 404)
+
+        val response5 = requests.get(s"$baseUrl/static/bar/a.txt", check = false)
+        assert(response5.statusCode == 200)
+        assert(response5.text() == "hello, world\n")
+        assert(response5.headers("content-type") == Seq("text/plain; charset=UTF-8"))
+
+        val response6 = requests.get(s"$baseUrl/static/bar/b.png", check = false)
+        assert(response6.statusCode == 200)
+        assert(response6.headers("content-type") == Seq("image/png"))
+
+        val response7 = requests.get(s"$baseUrl/static/bar/template.scala.html", check = false)
+        assert(response7.statusCode == 200)
+        assert(response7.headers("content-type") == Seq("text/html; charset=UTF-8"))
+
+        val response8 = requests.get(s"$baseUrl/static/bar/file", check = false)
+        assert(response8.statusCode == 200)
+        assert(response8.headers("content-type") == Seq("application/octet-stream"))

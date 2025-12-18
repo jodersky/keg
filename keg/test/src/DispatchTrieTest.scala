@@ -8,8 +8,8 @@ object DispatchTrieTest extends TestSuite:
   val tests = Tests:
     test("add and lookup static paths"):
       val trie = DispatchTrie[String]()
-      assert(trie.add(Seq("foo", "bar"), "GET", "value1", capturesSubpath = false) == AddResult.Ok)
-      assert(trie.add(Seq("foo", "baz"), "POST", "value2", capturesSubpath = false) == AddResult.Ok)
+      assert(trie.add(Seq("foo", "bar"), "GET", "value1") == AddResult.Ok)
+      assert(trie.add(Seq("foo", "baz"), "POST", "value2") == AddResult.Ok)
 
       val lookup1 = trie.lookup(IndexedSeq("foo", "bar"))
       assert(lookup1.items == Map("GET" -> "value1"))
@@ -23,8 +23,8 @@ object DispatchTrieTest extends TestSuite:
 
     test("add method conflict"):
       val trie = DispatchTrie[String]()
-      assert(trie.add(Seq("foo", "bar"), "GET", "value1", capturesSubpath = false) == AddResult.Ok)
-      val result = trie.add(Seq("foo", "bar"), "GET", "value2", capturesSubpath = false)
+      assert(trie.add(Seq("foo", "bar"), "GET", "value1") == AddResult.Ok)
+      val result = trie.add(Seq("foo", "bar"), "GET", "value2")
       assert(result.isInstanceOf[AddResult.MethodConflict[?]])
       val err = result.asInstanceOf[AddResult.MethodConflict[?]]
       assert(err.existingPath == "/foo/bar/")
@@ -32,8 +32,8 @@ object DispatchTrieTest extends TestSuite:
 
     test("add subpath conflict"):
       val trie = DispatchTrie[String]()
-      assert(trie.add(Seq("foo", "bar"), "GET", "value1", capturesSubpath = true) == AddResult.Ok)
-      val result = trie.add(Seq("foo", "bar", "baz"), "POST", "value2", capturesSubpath = false)
+      assert(trie.add(Seq("foo", "bar", "*"), "GET", "value1") == AddResult.Ok)
+      val result = trie.add(Seq("foo", "bar", "baz"), "POST", "value2")
       assert(result.isInstanceOf[AddResult.SubpathConflict[?]])
       val err = result.asInstanceOf[AddResult.SubpathConflict[?]]
       assert(err.existingPath == "/foo/bar/")
@@ -41,7 +41,7 @@ object DispatchTrieTest extends TestSuite:
 
     test("lookup with remaining path segments"):
       val trie = DispatchTrie[String]()
-      assert(trie.add(Seq("foo", "bar"), "GET", "value1", capturesSubpath = true) == AddResult.Ok)
+      assert(trie.add(Seq("foo", "bar", "*"), "GET", "value1") == AddResult.Ok)
 
       val lookup = trie.lookup(IndexedSeq("foo", "bar", "baz", "qux"))
       assert(lookup.items == Map("GET" -> "value1"))
@@ -50,7 +50,7 @@ object DispatchTrieTest extends TestSuite:
 
     test("lookup non-existing path"):
       val trie = DispatchTrie[String]()
-      assert(trie.add(Seq("foo", "bar"), "GET", "value1", capturesSubpath = false) == AddResult.Ok)
+      assert(trie.add(Seq("foo", "bar"), "GET", "value1") == AddResult.Ok)
 
       val lookup = trie.lookup(IndexedSeq("foo", "baz"))
       assert(lookup.items.isEmpty)
@@ -67,7 +67,7 @@ object DispatchTrieTest extends TestSuite:
 
     test("lookup empty path"):
       val trie = DispatchTrie[String]()
-      assert(trie.add(Seq(), "GET", "rootValue", capturesSubpath = false) == AddResult.Ok)
+      assert(trie.add(Seq(), "GET", "rootValue") == AddResult.Ok)
 
       val lookup = trie.lookup(IndexedSeq())
       assert(lookup.items == Map("GET" -> "rootValue"))
@@ -76,7 +76,7 @@ object DispatchTrieTest extends TestSuite:
 
     test("lookup dynamic path"):
       val trie = DispatchTrie[String]()
-      assert(trie.add(Seq("foo", ":id", "details"), "GET", "value3", capturesSubpath = false) == AddResult.Ok)
+      assert(trie.add(Seq("foo", ":id", "details"), "GET", "value3") == AddResult.Ok)
 
       val lookup = trie.lookup(IndexedSeq("foo", "123", "details"))
       assert(lookup.items == Map("GET" -> "value3"))
@@ -85,8 +85,8 @@ object DispatchTrieTest extends TestSuite:
 
     test("multiple methods same path"):
       val trie = DispatchTrie[String]()
-      assert(trie.add(Seq("foo", "bar"), "GET", "value1", capturesSubpath = false) == AddResult.Ok)
-      assert(trie.add(Seq("foo", "bar"), "POST", "value2", capturesSubpath = false) == AddResult.Ok)
+      assert(trie.add(Seq("foo", "bar"), "GET", "value1") == AddResult.Ok)
+      assert(trie.add(Seq("foo", "bar"), "POST", "value2") == AddResult.Ok)
 
       val lookup = trie.lookup(IndexedSeq("foo", "bar"))
       assert(lookup.items == Map("GET" -> "value1", "POST" -> "value2"))
@@ -95,8 +95,8 @@ object DispatchTrieTest extends TestSuite:
 
     test("static dynamic priority"):
       val trie = DispatchTrie[String]()
-      assert(trie.add(Seq("foo", "bar"), "GET", "staticValue", capturesSubpath = false) == AddResult.Ok)
-      assert(trie.add(Seq("foo", ":id"), "GET", "dynamicValue", capturesSubpath = false) == AddResult.Ok)
+      assert(trie.add(Seq("foo", "bar"), "GET", "staticValue") == AddResult.Ok)
+      assert(trie.add(Seq("foo", ":id"), "GET", "dynamicValue") == AddResult.Ok)
 
       val lookupStatic = trie.lookup(IndexedSeq("foo", "bar"))
       assert(lookupStatic.items == Map("GET" -> "staticValue"))

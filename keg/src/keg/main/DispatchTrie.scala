@@ -19,15 +19,20 @@ case class DispatchTrie[A](capturesSubpath: Boolean = false):
   def add(
     path: Iterable[String],
     method: String,
-    value: A,
-    capturesSubpath: Boolean
+    value: A
   ): AddResult[A] =
+
+    val (path1, capturesSubpath) = if path.nonEmpty && path.last == "*" then
+      (path.dropRight(1), true)
+    else
+      (path, false)
+
     val currPath = m.StringBuilder()
     currPath ++= "/"
 
     var curr: DispatchTrie[A] = this
 
-    val segments = path.iterator
+    val segments = path1.iterator
     while segments.hasNext do
       val segment = segments.next()
       val terminal = !segments.hasNext

@@ -21,5 +21,8 @@ export keg.default.put
 export keg.default.delete
 export keg.default.patch
 export keg.default.websocket
+export keg.default.notFound
+export keg.default.methodNotAllowed
+export keg.default.csrfError
 
 export keg.derivation.routes

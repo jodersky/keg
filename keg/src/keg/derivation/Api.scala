@@ -38,7 +38,17 @@ trait BaseApi:
     def path: String
     def methods: Seq[String]
 
-  trait WebsockectAnnotation extends EndpointAnnotation
+  trait WebsocketAnnotation extends EndpointAnnotation
+
+  trait NotFoundAnnotation extends EndpointAnnotation:
+    def path: String = ""
+    def methods: Seq[String] = Seq()
+  trait MethodNotAllowedAnnotation extends EndpointAnnotation:
+    def path: String = ""
+    def methods: Seq[String] = Seq()
+  trait CsrfErrorAnnotation extends EndpointAnnotation:
+    def path: String = ""
+    def methods: Seq[String] = Seq()
 
 trait Api extends BaseApi:
 
@@ -49,8 +59,12 @@ trait Api extends BaseApi:
   class delete(path: String) extends request(path, Seq("DELETE"))
   class patch(path: String) extends request(path, Seq("PATCH"))
 
-  class websocket(val path: String) extends WebsockectAnnotation:
+  class websocket(val path: String) extends WebsocketAnnotation:
     val methods: Seq[String] = Seq("GET")
+
+  class notFound() extends NotFoundAnnotation
+  class methodNotAllowed() extends MethodNotAllowedAnnotation
+  class csrfError() extends CsrfErrorAnnotation
 
   def badRequest(message: String): Response =
     Response("Bad Request " + message, 400)
