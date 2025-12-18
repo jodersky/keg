@@ -36,8 +36,10 @@ case class Request(
     cookies: Map[String, Cookie],
     session: Map[String, String],
     flash: Map[String, String],
-    body: java.io.InputStream
+    getBody: () => java.io.InputStream
 ):
+  def body = getBody()
+
   lazy val path: String =
     uri.indexOf('?') match
       case -1  => uri

@@ -32,7 +32,7 @@ object DerivationTest extends TestSuite:
           cookies = Map(),
           session = Map(),
           flash = Map(),
-          body = java.io.ByteArrayInputStream(Array())
+          getBody = () => java.io.ByteArrayInputStream(Array())
         )
       )
       val bytes = java.io.ByteArrayOutputStream()

@@ -115,6 +115,7 @@ trait Api extends BaseApi:
         case e: Exception =>
           Result.Respond(badRequest(s"Invalid JSON: ${e}"))
 
+
   // given toJsonResponse[A](using upickle.default.Writer[A]): ToResponse[A] with
   //   def toResponse(value: A): Response =
   //     val jsonData = new keg.model.Data:
@@ -128,3 +129,48 @@ trait Api extends BaseApi:
   //       status = 200,
   //       headers = Seq("Content-Type" -> "application/json")
   //     )
+
+  // TODO: - remove dependency on Undertow in this file
+  //       - handle file removal after request is processed
+  given FormDataFromRequest: FromRequest[keg.model.FormData] with
+    def fromRequest(request: Request): Result[keg.model.FormData] =
+      try
+        val factory = io.undertow.server.handlers.form.FormParserFactory.builder()
+          .withDefaultCharset("UTF-8")
+          .build()
+
+        val parser = factory.createParser(keg.main.Server.exchange.get())
+
+        val formData = parser.parseBlocking()
+        val it = formData.iterator()
+        val entries = scala.collection.mutable.Buffer.empty[(String, keg.model.FormEntry)]
+        while it.hasNext do
+          val name = it.next()
+          val fields = formData.get(name) // there can be multiple fields with the same name
+          val fieldsIt = fields.iterator()
+          while fieldsIt.hasNext do
+            val fieldValue = fieldsIt.next()
+
+            val headers = scala.collection.mutable.Buffer.empty[(String, String)]
+            val jheaders = fieldValue.getHeaders()
+
+            if jheaders != null then // null for urlencoded forms
+              jheaders.forEach: header =>
+                header.forEach: value =>
+                  headers += (header.getHeaderName().toString -> value)
+
+            if fieldValue.isFile then
+              entries += (name -> keg.model.FormEntry.File(
+                fileName = fieldValue.getFileName,
+                filePath = fieldValue.getPath,
+                headers = headers.toSeq
+              ))
+            else
+              val value = fieldValue.getValue
+              entries += (name -> keg.model.FormEntry.Value(value, headers.toSeq))
+
+        Result.Continue(keg.model.FormData(entries.toSeq))
+      catch
+        case e: Exception =>
+          e.printStackTrace()
+          Result.Respond(badRequest(s"Error parsing form data: ${e.getMessage}"))
