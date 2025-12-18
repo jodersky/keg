@@ -146,18 +146,18 @@ class Server(
 
           override def onFullBinaryMessage(channel: WebSocketChannel, message: BufferedBinaryMessage): Unit = {
             actor.send(Ws.Binary(
-              WebSockets.mergeBuffers(message.getData.getResource:_*).array()
+              WebSockets.mergeBuffers(message.getData.getResource*).array()
             ))
           }
 
           override def onFullPingMessage(channel: WebSocketChannel, message: BufferedBinaryMessage): Unit = {
             actor.send(Ws.Ping(
-              WebSockets.mergeBuffers(message.getData.getResource:_*).array()
+              WebSockets.mergeBuffers(message.getData.getResource*).array()
             ))
           }
           override def onFullPongMessage(channel: WebSocketChannel, message: BufferedBinaryMessage): Unit = {
             actor.send(Ws.Pong(
-              WebSockets.mergeBuffers(message.getData.getResource:_*).array()
+              WebSockets.mergeBuffers(message.getData.getResource*).array()
             ))
           }
 

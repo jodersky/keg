@@ -2,6 +2,7 @@ package keg.derivation
 
 import keg.model.Request
 import keg.model.Response
+import keg.model.WsResponse
 import java.util.UUID
 
 enum Result[+A]:
@@ -17,10 +18,10 @@ trait BaseApi:
     def fromRequest(request: Request): Result[A]
 
   trait ToResponse[-A]:
-    def toResponse(value: A): Response
+    def toResponse(value: A): (Response | WsResponse)
 
-  given responseToResponse: ToResponse[Response] with
-    def toResponse(value: Response): Response = value
+  given responseToResponse: ToResponse[Response] = response => response
+  given wsResponseToResponse: ToResponse[WsResponse] = response => response
 
   given dataToResponse: ToResponse[keg.model.Data] with
     def toResponse(value: keg.model.Data): Response =
@@ -37,6 +38,8 @@ trait BaseApi:
     def path: String
     def methods: Seq[String]
 
+  trait WebsockectAnnotation extends EndpointAnnotation
+
 trait Api extends BaseApi:
 
   class request(val path: String, val methods: Seq[String]) extends EndpointAnnotation
@@ -46,8 +49,11 @@ trait Api extends BaseApi:
   class delete(path: String) extends request(path, Seq("DELETE"))
   class patch(path: String) extends request(path, Seq("PATCH"))
 
+  class websocket(val path: String) extends WebsockectAnnotation:
+    val methods: Seq[String] = Seq("GET")
+
   def badRequest(message: String): Response =
-    Response("Bad Request " + message, 400, Seq("Content-Type" -> "text/plain"))
+    Response("Bad Request " + message, 400)
 
   given StringFromPath: FromPath[String] = segment => Result.Continue(segment)
   given IntFromPath: FromPath[Int] = segment =>

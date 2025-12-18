@@ -85,6 +85,22 @@ def endpointImpl(using qctx: Quotes)(
   val dynamicSegments =
     path.split("/").toSeq.filter(_.startsWith(":")).map(_.drop(1))
 
+  val mt = method.termRef.widenTermRefByName.asInstanceOf[MethodType].resType.widenTermRefByName
+
+  val toResponseTpe = TypeSelect(
+    prefix,
+    "ToResponse"
+  ).tpe.appliedTo(mt)
+
+  val toResponse = Implicits.search(toResponseTpe) match
+    case success: ImplicitSearchSuccess =>
+      success.tree.asExprOf[keg.derivation.BaseApi#ToResponse[?]]
+    case failure: ImplicitSearchFailure =>
+      report.errorAndAbort(
+        s"No given instance of ToResponse[${mt.show}] found for method '${method.name}'",
+        method.pos.get
+      )
+
   def paramChecks(
     owner: Symbol,
     prefix: Ref,
@@ -148,7 +164,7 @@ def endpointImpl(using qctx: Quotes)(
       List("request")
     )(
       _ => List(TypeRepr.of[keg.model.Request]),
-      _ => TypeRepr.of[keg.model.Response]
+      _ => TypeRepr.of[keg.model.Response | keg.model.WsResponse]
     ), {
       case (sym, List(req)) =>
         val valSymss = for paramss <- method.paramSymss yield
@@ -180,20 +196,33 @@ def endpointImpl(using qctx: Quotes)(
           for v <- vals yield Ref(v)
         val application = argss.foldLeft(base)((lhs, args) => Apply(lhs, args))
 
+        val conversion = '{
+          ${toResponse}.asInstanceOf[BaseApi#ToResponse[Any]].toResponse(${application.asExpr})
+        }.asTerm
+
         Block(
           valDefss.flatten ++ paramChecks(sym, prefix, valSymss, req.asExprOf[keg.model.Request]).flatten,
-          application
+          conversion
         )
+      case _ => ???
     }
-  ).asExprOf[keg.model.Request => keg.model.Response]
+  ).asExprOf[keg.model.Request => (keg.model.Response | keg.model.WsResponse)]
 
+  val selector = if annot.tpe <:< TypeRepr.of[keg.derivation.BaseApi#WebsockectAnnotation] then
+    '{
+      keg.model.EndpointSelector.WebSocketUpgrade(${Expr(path)})
+    }
+  else
+    '{
+      keg.model.EndpointSelector.Simple(
+        path = ${Expr(path)},
+        methods = ${annot.asExprOf[keg.derivation.Api#EndpointAnnotation]}.methods
+      )
+    }
 
   '{
     keg.model.Endpoint(
-      selector = keg.model.EndpointSelector.Simple(
-        path = ${Expr(path)},
-        methods = ${annot.asExprOf[keg.derivation.Api#EndpointAnnotation]}.methods
-      ),
+      selector = $selector,
       invoke = ${invokeFunc},
       meta = keg.model.EndpointMeta(
         file = ${Expr(method.pos.get.sourceFile.getJPath.map(_.getFileName().toString).getOrElse("<unknown>"))},

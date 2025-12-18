@@ -20,5 +20,6 @@ export keg.default.post
 export keg.default.put
 export keg.default.delete
 export keg.default.patch
+export keg.default.websocket
 
 export keg.derivation.routes

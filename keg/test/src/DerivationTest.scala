@@ -64,3 +64,30 @@ object DerivationTest extends TestSuite:
           val routes = keg.routes()
       """)
       assert(err.msg.contains("No given instance of FromRequest[app.Foo] found"))
+
+    test("ToResponse not found"):
+      val err = utest.assertCompileError("""
+        object app:
+          class Foo
+
+          @keg.get("/item/:id")
+          def getItem(id: String): Foo =
+            Foo()
+
+          val routes = keg.routes()
+      """)
+      assert(err.msg.contains("No given instance of ToResponse[app.Foo] found") )
+
+    test("websocket derivation"):
+      object app:
+        @keg.websocket("/ws/:user")
+        def socket(user: String): keg.WsResponse =
+          keg.WsResponse:
+            channel =>
+              keg.WsActor:
+                case _ => ()
+
+        val routes = keg.routes()
+
+      assert(app.routes.endpoints.length == 1)
+      assert(app.routes.endpoints.head.selector.isInstanceOf[keg.model.EndpointSelector.WebSocketUpgrade])
