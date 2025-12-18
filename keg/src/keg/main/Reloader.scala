@@ -1,0 +1,58 @@
+package keg.main
+
+object Reloader:
+
+  val instance = java.util.UUID.randomUUID().toString
+
+  private val clients = java.util.concurrent.ConcurrentHashMap.newKeySet[castor.Actor[keg.model.Ws.Event]]()
+
+  def reload(): Unit =
+    val message = keg.model.Ws.Text("""{"type": "reload"}""")
+    val it = clients.iterator()
+    while it.hasNext do
+      val client = it.next()
+      client.send(message)
+
+  val endpoints = Seq(
+    keg.model.Endpoint(
+      selector = keg.model.EndpointSelector.WebSocketUpgrade("/__dev_ws"),
+      invoke = (request: keg.model.Request) =>
+        keg.model.WsResponse(
+          channel =>
+            channel.send(
+              keg.model.Ws.Text(
+                s"""{
+                  |  "type": "hello",
+                  |  "instance": "$instance"
+                  |}""".stripMargin
+              )
+            )
+            clients.add(channel)
+            keg.model.WsActor:
+              case keg.model.Ws.ChannelClosed() =>
+                clients.remove(channel)
+              case _ => ()
+        )
+    ),
+    keg.model.Endpoint(
+      selector = keg.model.EndpointSelector.Simple("/__dev_ws.js", Seq("GET")),
+      invoke = (request: keg.model.Request) =>
+        keg.model.Static.staticResource("/reload.js")
+    )
+  )
+
+  // val script = new String(this.getClass().getResourceAsStream("/reload.js").readAllBytes(), "UTF-8")
+
+  def inject(response: keg.model.Response): keg.model.Response =
+    val allHeaders = (response.data.headers ++ response.headers).map(elem => elem._1.toLowerCase -> elem._2).toMap
+    allHeaders.get("content-type") match
+      case Some(html) if html.startsWith("text/html") =>
+        val buffer = new java.io.ByteArrayOutputStream()
+        response.data.write(buffer)
+        val content = buffer.toString("UTF-8")
+        val injectedContent = content.replace(
+          "</body>",
+          s"""<script src="/__dev_ws.js"></script></body>"""
+        )
+        response.copy(data = injectedContent, headers = response.headers ++ Seq("content-type" -> "text/html; charset=UTF-8"))
+      case _ => response

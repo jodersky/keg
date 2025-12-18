@@ -62,7 +62,12 @@ class Server(
     log.info("CSRF check failed: " + req.uri)
     Response("Forbidden - CSRF check failed", 403)
 
-  for endpoint <- endpoints do
+  private val endpoints1 = if debugMode then
+    endpoints ++ Reloader.endpoints
+  else
+    endpoints
+
+  for endpoint <- endpoints1 do
     endpoint.selector match
       case sel: keg.model.EndpointSelector.Simple =>
         for method <- sel.methods do
@@ -173,7 +178,9 @@ class Server(
     ): Unit =
       log.info("request")
 
-      def writeResponse(response: keg.model.Response): Unit =
+      def writeResponse(response0: keg.model.Response): Unit =
+        val response = if debugMode then Reloader.inject(response0) else response0
+
         exchange.setStatusCode(response.status)
 
         for (key, value) <- response.data.headers do

@@ -31,3 +31,7 @@ object keg extends ScalaModule with ScalafmtModule:
 object sandbox extends ScalaModule:
   def scalaVersion = scala3
   def moduleDeps = Seq(keg)
+
+  def mvnDeps = Seq(
+    mvn"com.lihaoyi::scalatags:0.13.1"
+  )
