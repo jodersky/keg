@@ -16,7 +16,8 @@ object keg extends ScalaModule with ScalafmtModule:
     mvn"io.undertow:undertow-core:2.3.20.Final",
     mvn"io.netty:netty-all:4.2.7.Final",
     mvn"io.fusionauth:java-http:1.4.0",
-    mvn"com.lihaoyi::upickle:4.0.2"
+    mvn"com.lihaoyi::upickle:4.0.2",
+    mvn"com.lihaoyi::castor:0.3.0"
   )
 
   object test extends ScalaTests:

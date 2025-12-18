@@ -7,11 +7,11 @@ export keg.model.Cookie
 export keg.model.WsResponse
 export keg.model.Endpoint
 export keg.model.EndpointSelector
-
+export keg.model.Ws
+export keg.model.WsActor
 
 export keg.main.Server
 export keg.main.Secret
-
 
 object default extends keg.derivation.Api
 export keg.default.request

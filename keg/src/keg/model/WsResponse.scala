@@ -1,5 +1,5 @@
 package keg.model
 
-case class WsResponse(
-    // f: WsChannelActor => castor.Actor[Ws.Event])(implicit ac: castor.Context, log: Logger)
+class WsResponse(
+    val f: castor.Context ?=> castor.Actor[Ws.Event] => castor.Actor[Ws.Event]
 )

@@ -36,7 +36,7 @@ object DerivationTest extends TestSuite:
         )
       )
       val bytes = java.io.ByteArrayOutputStream()
-      response.data.write(bytes)
+      response.asInstanceOf[keg.model.Response].data.write(bytes)
       assert(new String(bytes.toByteArray, "UTF-8") == "Hello, Alice€!")
 
     test("FromPath not found"):

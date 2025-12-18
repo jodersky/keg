@@ -98,12 +98,76 @@ class Server(
               s"Subpath conflict when adding endpoint ${endpoint.meta} ${sel.path}: existing endpoints: ${items.values.map(_.meta).mkString(", ")}"
             )
       case keg.model.EndpointSelector.NotFound =>
-        handleNotFound = endpoint.invoke
+        handleNotFound = endpoint.invoke.asInstanceOf[Request => Response]
       case keg.model.EndpointSelector.MethodNotAllowed =>
-        handleMethodNotAllowed = endpoint.invoke
+        handleMethodNotAllowed = endpoint.invoke.asInstanceOf[Request => Response]
       case keg.model.EndpointSelector.CsrfError =>
-        handleCsrfFailure = endpoint.invoke
+        handleCsrfFailure = endpoint.invoke.asInstanceOf[Request => Response]
   end for
+
+  private given castorContext: castor.Context = castor.Context.Simple(
+    castor.Context.Simple.executionContext,
+    err => log.error("Actor error", err)
+  )
+
+  private class WsChannelActor(channel: io.undertow.websockets.core.WebSocketChannel) extends castor.SimpleActor[keg.model.Ws.Event]:
+    import io.undertow.websockets.core.WebSockets
+    import keg.model.Ws
+    import java.nio.ByteBuffer
+
+    def run(item: Ws.Event): Unit = item match
+      case Ws.Text(value) => WebSockets.sendTextBlocking(value, channel)
+      case Ws.Binary(value) => WebSockets.sendBinaryBlocking(ByteBuffer.wrap(value), channel)
+      case Ws.Ping(value) => WebSockets.sendPingBlocking(ByteBuffer.wrap(value), channel)
+      case Ws.Pong(value) => WebSockets.sendPongBlocking(ByteBuffer.wrap(value), channel)
+      case Ws.Close(code, reason) => WebSockets.sendCloseBlocking(code, reason, channel)
+
+  end WsChannelActor
+
+
+  private class WsHandler(f: WsChannelActor => castor.Actor[keg.model.Ws.Event]) extends io.undertow.websockets.WebSocketConnectionCallback:
+    import io.undertow.websockets.spi.WebSocketHttpExchange
+    import io.undertow.websockets.core.WebSocketChannel
+    import io.undertow.websockets.core.{AbstractReceiveListener, BufferedBinaryMessage, BufferedTextMessage, CloseMessage, WebSocketChannel, WebSockets}
+    import keg.model.Ws
+
+    def onConnect(exchange: WebSocketHttpExchange, channel: WebSocketChannel): Unit =
+      channel.suspendReceives()
+      val actor = f(new WsChannelActor(channel))
+      // Somehow browsers closing tabs and Java processes being killed appear
+      // as different events here; the former goes to AbstractReceiveListener#onClose,
+      // while the latter to ChannelListener#handleEvent. Make sure we handle both cases.
+      channel.addCloseTask(channel => actor.send(Ws.ChannelClosed()))
+      channel.getReceiveSetter.set(
+        new AbstractReceiveListener() {
+          override def onFullTextMessage(channel: WebSocketChannel, message: BufferedTextMessage) = {
+            actor.send(Ws.Text(message.getData))
+          }
+
+          override def onFullBinaryMessage(channel: WebSocketChannel, message: BufferedBinaryMessage): Unit = {
+            actor.send(Ws.Binary(
+              WebSockets.mergeBuffers(message.getData.getResource:_*).array()
+            ))
+          }
+
+          override def onFullPingMessage(channel: WebSocketChannel, message: BufferedBinaryMessage): Unit = {
+            actor.send(Ws.Ping(
+              WebSockets.mergeBuffers(message.getData.getResource:_*).array()
+            ))
+          }
+          override def onFullPongMessage(channel: WebSocketChannel, message: BufferedBinaryMessage): Unit = {
+            actor.send(Ws.Pong(
+              WebSockets.mergeBuffers(message.getData.getResource:_*).array()
+            ))
+          }
+
+          override def onCloseMessage(cm: CloseMessage, channel: WebSocketChannel) = {
+            actor.send(Ws.Close(cm.getCode, cm.getReason))
+          }
+        }
+      )
+      channel.resumeReceives()
+  end WsHandler
 
   private object handler extends undertow.server.HttpHandler:
     override def handleRequest(
@@ -247,7 +311,11 @@ class Server(
             WebAppUtil.verifyMap(cookie.getValue(), runtimeSecrets)
 
       val decodedPathSegments = Util.splitPath(java.net.URLDecoder.decode(exchange.getRequestPath(), "UTF-8"))
-      val lookupResult = dispatchTrie.lookup(decodedPathSegments)
+
+      val lookupResult = if exchange.getRequestHeaders().getFirst("upgrade") == "websocket" then
+        websocketDispatchTrie.lookup(decodedPathSegments)
+      else
+        dispatchTrie.lookup(decodedPathSegments)
 
       val request = keg.model.Request(
         method = exchange.getRequestMethod().toString,
@@ -275,7 +343,13 @@ class Server(
           lookupResult.items.get(exchange.getRequestMethod().toString) match
             case Some(endpoint) =>
               val response = endpoint.invoke(request)
-              writeResponse(response)
+              response match
+                case simple: keg.model.Response =>
+                  writeResponse(simple)
+                case wsResponse: keg.model.WsResponse =>
+                  val wsHandler = WsHandler(wsResponse.f)
+                  io.undertow.Handlers.websocket(wsHandler).handleRequest(exchange)
+
             case None =>
               writeResponse(handleMethodNotAllowed(request))
       catch

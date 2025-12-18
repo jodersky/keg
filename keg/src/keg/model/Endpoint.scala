@@ -23,12 +23,12 @@ package keg.model
   */
 case class Endpoint(
   selector: EndpointSelector,
-  invoke: Request => Response, // TODO: also allow websocket response
+  invoke: Request => (Response | WsResponse), // TODO: also allow websocket response
   meta: EndpointMeta
 )
 object Endpoint:
   // TODO: move keg.main.Pos to keg.util.Pos to avoid circular dependencies between packages
-  def apply(selector: EndpointSelector, invoke: Request => Response)(using meta: keg.main.Pos): Endpoint =
+  def apply(selector: EndpointSelector, invoke: Request => (Response | WsResponse))(using meta: keg.main.Pos): Endpoint =
     Endpoint(
       selector,
       invoke,
