@@ -10,6 +10,16 @@ def index() =
         |<body>
         |  <h1>Welcome to the Keg Example Server!</h1>
         |  <p>Try accessing <a href="/hello?name=World">/hello?name=World</a></p>
+        |  <form action="/submit" method="post" enctype="multipart/form-data">
+        |    <label for="name">Name:</label>
+        |    <input type="text" id="name" name="name"><br><br>
+        |    <label for="value">Value:</label>
+        |    <input type="text" id="value" name="email"><br><br>
+        |    <label for="file">File:</label>
+        |    <input type="file" id="file" name="file"><br><br>
+        |    <input type="submit" value="Submit">
+        |
+        |  </form>
         |
         |</body>
         |</html>
@@ -19,6 +29,21 @@ def index() =
     data = html,
     headers = Seq("content-type" -> "text/html; charset=UTF-8")
   )
+
+@keg.post("/submit")
+def submitForm(req: keg.Request): keg.Response =
+  val allData = req.body.readAllBytes()
+  val bodyStr = new String(allData, "UTF-8")
+  println(bodyStr)
+  keg.Response(
+    (),
+    status = 302,
+    headers = Seq(
+      "Location" -> "/"
+    )
+  )
+
+  //
 
 @keg.get("/index2")
 def index2() =

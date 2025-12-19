@@ -1,25 +1,38 @@
 package keg.util.forms
 
+import keg.model.FormData
+
 trait FormApi extends keg.derivation.BaseApi:
 
-  given FormFromRequest[A](using fr: FromForm[A]): FromRequest[Form[A]] with
-    def fromRequest(request: keg.model.Request): keg.derivation.Result[Form[A]] =
-      val bytes = request.body.readAllBytes()
-      val formData = new String(bytes, java.nio.charset.StandardCharsets.UTF_8)
-      val entries = formData.split("&").toSeq.flatMap { pair =>
-        pair.split("=", 2) match
-          case Array(key, value) => Some((java.net.URLDecoder.decode(key, "UTF-8"), java.net.URLDecoder.decode(value, "UTF-8")))
-          case Array(key) => Some((java.net.URLDecoder.decode(key, "UTF-8"), ""))
-          case _ => None
-      }
-      keg.derivation.Result.Continue(fr.parse(entries))
+  given FormFromRequest[A](
+    using fr: FromForm[A], dr: FromRequest[keg.model.FormData]): FromRequest[Form[A]] with
+      def fromRequest(request: keg.model.Request): keg.derivation.Result[Form[A]] =
+        dr.fromRequest(request) match
+          case keg.derivation.Result.Respond(response) =>
+            keg.derivation.Result.Respond(response)
+          case keg.derivation.Result.Continue(formData) =>
+            val form = fr.parse(formData)
+            keg.derivation.Result.Continue(form)
 
 trait FromForm[A]:
-  def parse(entries: Seq[(String, String)]): Form[A]
+  def parse(data: FormData): Form[A]
 
 object FromForm:
 
   def derived[A] = ???
+
+trait FormFieldReader[A]:
+  def read(value: String): Either[String, A]
+
+object FormFieldReader:
+  given stringFieldReader: FormFieldReader[String] with
+    def read(value: String): Either[String, String] = Right(value)
+  given intFieldReader: FormFieldReader[Int] with
+    def read(value: String): Either[String, Int] =
+      try
+        Right(value.toInt)
+      catch
+        case _: NumberFormatException => Left(s"Invalid integer: $value")
 
 // this represents a form result
 enum Form[+A]:
