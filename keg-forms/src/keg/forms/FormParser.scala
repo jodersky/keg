@@ -1,4 +1,4 @@
-package keg.util.forms
+package keg.forms
 
 import java.io.InputStream
 import java.net.URLDecoder

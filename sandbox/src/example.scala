@@ -1,12 +1,13 @@
+import keg.forms.{Form, FormData}
 
 case class ChangePasswordRequest(
     oldPassword: String,
     newPassword: Int,
     confirmNewPassword: String
-) derives keg.util.forms.FromForm
+) derives keg.forms.FromForm
 
 @keg.post("/change-password")
-def changePassword(form: keg.util.forms.Form[ChangePasswordRequest]): keg.Response =
+def changePassword(form: keg.forms.Form[ChangePasswordRequest]): keg.Response =
   println(form)
   keg.Response(
     data = s"Received form: $form",
@@ -59,7 +60,7 @@ def index() =
   )
 
 @keg.post("/submit")
-def submitForm(req: keg.Request, data: keg.util.forms.FormData): keg.Response =
+def submitForm(req: keg.Request, data: keg.forms.FormData): keg.Response =
   // val allData = req.body.readAllBytes()
   // val bodyStr = new String(allData, "UTF-8")
   // println(bodyStr)

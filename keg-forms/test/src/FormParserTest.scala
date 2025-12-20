@@ -1,6 +1,6 @@
 import utest.*
-import keg.util.forms.FormParser
-import keg.util.forms.FormPart
+import keg.forms.FormParser
+import keg.forms.FormPart
 import java.io.ByteArrayInputStream
 import java.nio.charset.StandardCharsets
 import java.nio.file.{Files, Path}

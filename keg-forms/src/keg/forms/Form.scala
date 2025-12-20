@@ -1,4 +1,4 @@
-package keg.util.forms
+package keg.forms
 
 trait FromForm[A]:
   def parse(data: FormData): Form[A]

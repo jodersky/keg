@@ -28,6 +28,18 @@ object keg extends ScalaModule with ScalafmtModule:
       mvn"com.lihaoyi::requests:0.9.0"
     )
 
+  def moduleDeps = Seq(`keg-forms`)
+
+object `keg-forms` extends ScalaModule with ScalafmtModule:
+  def scalaVersion = scala3
+  def scalacOptions = Seq("-deprecation", "-feature", "-unchecked", "-encoding", "utf8", "-preview")
+
+  object test extends ScalaTests:
+    def testFramework = "utest.runner.Framework"
+    def mvnDeps = Seq(
+      mvn"com.lihaoyi::utest:0.9.4"
+    )
+
 
 object sandbox extends ScalaModule:
   def scalaVersion = scala3

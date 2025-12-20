@@ -1,8 +1,9 @@
 import utest.*
 
-import keg.util.forms.Form
-import keg.util.forms.FromForm
-import keg.util.forms.FormData
+import keg.forms.Form
+import keg.forms.FromForm
+import keg.forms.FormData
+import keg.forms.FormPart
 
 object FormDerivationTest extends TestSuite:
 
@@ -15,8 +16,8 @@ object FormDerivationTest extends TestSuite:
     test("derive FromForm for SimpleForm"):
       val fromForm = FromForm.derived[SimpleForm]
       val data = FormData(Seq(
-        keg.util.forms.FormPart.Field("name", "Alice"),
-        keg.util.forms.FormPart.Field("age", "30")
+        FormPart.Field("name", "Alice"),
+        FormPart.Field("age", "30")
       ))
       val form = fromForm.parse(data)
       assert(form.value.contains(SimpleForm("Alice", 30)))
@@ -24,8 +25,8 @@ object FormDerivationTest extends TestSuite:
     test("derive FromForm for OptionalForm with all fields"):
       val fromForm = FromForm.derived[OptionalForm]
       val data = FormData(Seq(
-        keg.util.forms.FormPart.Field("email", "user@example.com"),
-        keg.util.forms.FormPart.Field("score", "85")
+        FormPart.Field("email", "user@example.com"),
+        FormPart.Field("score", "85")
       ))
       val form = fromForm.parse(data)
       assert(form.value.contains(OptionalForm(Some("user@example.com"), Some(85))))

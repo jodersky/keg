@@ -32,10 +32,10 @@ class TestCounter:
   @Benchmark
   def parse(state: state): Unit =
     state.inputStream.reset()
-    keg.util.forms.FormParser.parseMultipart(
+    keg.forms.FormParser.parseMultipart(
       state.inputStream,
       state.boundary,
-      keg.util.forms.FormParser.FsDest.Null,
+      keg.forms.FormParser.FsDest.Null,
       maxSize = 1024 * 1024,
       maxMetaSize = 512,
       maxFieldSize = 10 * 1024,
@@ -45,7 +45,7 @@ class TestCounter:
   @Benchmark
   def parseUrlencoded(state: state): Unit =
     state.urlencodedInputStream.reset()
-    keg.util.forms.FormParser.parseUrlEncoded(
+    keg.forms.FormParser.parseUrlEncoded(
       state.urlencodedInputStream,
       maxSize = 1024 * 1024
     )

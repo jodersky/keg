@@ -4,7 +4,8 @@ import keg.model.Request
 import keg.model.Response
 import keg.model.WsResponse
 import java.util.UUID
-import keg.util.forms.FormParser
+import keg.forms.FormParser
+import keg.forms.{Form, FormData, FromForm}
 
 enum Result[+A]:
   case Continue(value: A)
@@ -177,14 +178,14 @@ trait Api extends BaseApi:
           Result.Respond(badRequest(s"Error parsing form data: ${e.getMessage}"))
 
 
-  given UtilFormDataFromRequest: FromRequest[keg.util.forms.FormData] with
-    def fromRequest(request: Request): Result[keg.util.forms.FormData] =
+  given UtilFormDataFromRequest: FromRequest[keg.forms.FormData] with
+    def fromRequest(request: Request): Result[keg.forms.FormData] =
       try
         val headers = request.headers.mapValues(_.last).toMap
-        val parts = keg.util.forms.FormParser.parse(request.getBody(), headers,
-          keg.util.forms.FormParser.FsDest.Null
+        val parts = keg.forms.FormParser.parse(request.getBody(), headers,
+          keg.forms.FormParser.FsDest.Null
         )
-        Result.Continue(keg.util.forms.FormData(parts))
+        Result.Continue(keg.forms.FormData(parts))
       catch
         case e: FormParser.FormTooLargeException =>
           Result.Respond(badRequest(s"Form data too large: ${e.getMessage}"))
@@ -195,8 +196,8 @@ trait Api extends BaseApi:
         case e: Exception =>
           Result.Respond(badRequest(s"Error parsing form data: ${e.getMessage}"))
 
-  given FormFromRequest[A](using ff: keg.util.forms.FromForm[A]): FromRequest[keg.util.forms.Form[A]] with
-    def fromRequest(request: Request): Result[keg.util.forms.Form[A]] =
+  given FormFromRequest[A](using ff: keg.forms.FromForm[A]): FromRequest[keg.forms.Form[A]] with
+    def fromRequest(request: Request): Result[keg.forms.Form[A]] =
       UtilFormDataFromRequest.fromRequest(request) match
         case Result.Respond(resp) => Result.Respond(resp)
         case Result.Continue(formData) =>
