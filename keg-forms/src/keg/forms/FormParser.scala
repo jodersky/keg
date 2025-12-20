@@ -114,7 +114,7 @@ object FormParser:
       */
     def openStream(filename: String): java.io.OutputStream
 
-  object FsDest:
+  object FileDest:
     class Fs(dir: java.nio.file.Path) extends FileDest:
       override def openStream(filename: String): java.io.OutputStream =
         val safeName = java.util.Base64.getUrlEncoder().encodeToString(filename.getBytes(StandardCharsets.UTF_8))

@@ -17,11 +17,13 @@ object FormTest extends TestSuite:
     test("basic form derivation"):
       object app:
         @keg.post("/submit")
-        def submitForm(form: keg.model.FormData): keg.Response =
-          val name = form.entries.toMap.get("name").map(_.asInstanceOf[keg.model.FormEntry.Value])
-            .map(_.value).getOrElse("unknown")
-          val value = form.entries.toMap.get("value").map(_.asInstanceOf[keg.model.FormEntry.Value])
-            .map(_.value).getOrElse("unknown")
+        def submitForm(form: keg.forms.FormData): keg.Response =
+          val name = form.parts.collect:
+            case keg.forms.FormPart.Field("name", value) => value
+          .head
+          val value = form.parts.collect:
+            case keg.forms.FormPart.Field("value", value) => value
+          .head
           keg.Response(s"Hello, $name! Value is: $value")
 
         val routes = keg.routes()

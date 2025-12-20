@@ -347,9 +347,7 @@ class Server(
         else
           lookupResult.items.get(exchange.getRequestMethod().toString) match
             case Some(endpoint) =>
-              val response = ScopedValue.where(Server.exchange, exchange).call(
-                () => endpoint.invoke(request)
-              )
+              val response = endpoint.invoke(request)
               response match
                 case simple: keg.model.Response =>
                   writeResponse(simple)
@@ -392,7 +390,3 @@ object Server:
   // The XNIO library used by Undertow does logging in static initializers,
   // so we need to set this system property before anything else is loaded.
   System.setProperty("org.jboss.logging.provider", "slf4j")
-
-  // escape hatch for passing the exchange around, while we refactor away from
-  // Undertow types
-  val exchange = ScopedValue.newInstance[io.undertow.server.HttpServerExchange]

@@ -4,8 +4,6 @@ import keg.model.Request
 import keg.model.Response
 import keg.model.WsResponse
 import java.util.UUID
-import keg.forms.FormParser
-import keg.forms.{Form, FormData, FromForm}
 
 enum Result[+A]:
   case Continue(value: A)
@@ -132,66 +130,20 @@ trait Api extends BaseApi:
   //       headers = Seq("Content-Type" -> "application/json")
   //     )
 
-  // TODO: - remove dependency on Undertow in this file
-  //       - handle file removal after request is processed
-  given FormDataFromRequest: FromRequest[keg.model.FormData] with
-    def fromRequest(request: Request): Result[keg.model.FormData] =
-      try
-        val factory = io.undertow.server.handlers.form.FormParserFactory.builder()
-          .withDefaultCharset("UTF-8")
-          .build()
-
-        val parser = factory.createParser(keg.main.Server.exchange.get())
-
-        val formData = parser.parseBlocking()
-        val it = formData.iterator()
-        val entries = scala.collection.mutable.Buffer.empty[(String, keg.model.FormEntry)]
-        while it.hasNext do
-          val name = it.next()
-          val fields = formData.get(name) // there can be multiple fields with the same name
-          val fieldsIt = fields.iterator()
-          while fieldsIt.hasNext do
-            val fieldValue = fieldsIt.next()
-
-            val headers = scala.collection.mutable.Buffer.empty[(String, String)]
-            val jheaders = fieldValue.getHeaders()
-
-            if jheaders != null then // null for urlencoded forms
-              jheaders.forEach: header =>
-                header.forEach: value =>
-                  headers += (header.getHeaderName().toString -> value)
-
-            if fieldValue.isFile then
-              entries += (name -> keg.model.FormEntry.File(
-                fileName = fieldValue.getFileName,
-                filePath = fieldValue.getPath,
-                headers = headers.toSeq
-              ))
-            else
-              val value = fieldValue.getValue
-              entries += (name -> keg.model.FormEntry.Value(value, headers.toSeq))
-
-        Result.Continue(keg.model.FormData(entries.toSeq))
-      catch
-        case e: Exception =>
-          e.printStackTrace()
-          Result.Respond(badRequest(s"Error parsing form data: ${e.getMessage}"))
-
-
   given UtilFormDataFromRequest: FromRequest[keg.forms.FormData] with
     def fromRequest(request: Request): Result[keg.forms.FormData] =
       try
         val headers = request.headers.mapValues(_.last).toMap
         val parts = keg.forms.FormParser.parse(request.getBody(), headers,
-          keg.forms.FormParser.FsDest.Null
+          keg.forms.FormParser.FileDest.Null
         )
         Result.Continue(keg.forms.FormData(parts))
       catch
-        case e: FormParser.FormTooLargeException =>
+        case e: keg.forms.FormParser.FormTooLargeException =>
           Result.Respond(badRequest(s"Form data too large: ${e.getMessage}"))
-        case e: FormParser.InvalidFormEncodingException =>
+        case e: keg.forms.FormParser.InvalidFormEncodingException =>
           Result.Respond(badRequest(s"Invalid form encoding: ${e.getMessage}"))
-        case e: FormParser.FormPartTooLargeException =>
+        case e: keg.forms.FormParser.FormPartTooLargeException =>
           Result.Respond(badRequest(s"Form part too large: ${e.getMessage}"))
         case e: Exception =>
           Result.Respond(badRequest(s"Error parsing form data: ${e.getMessage}"))

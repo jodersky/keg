@@ -116,7 +116,7 @@ object FormParserTest extends TestSuite:
         assert(result == Seq(FormPart.Field("key1", "value1"), FormPart.Field("key2", "value2")))
 
     test("parseMultipart"):
-      val dest = FormParser.FsDest.Fs(tempDir)
+      val dest = FormParser.FileDest.Fs(tempDir)
 
       test("text fields only"):
         val boundary = "----WebKitFormBoundary7MA4YWxkTrZu0gW"

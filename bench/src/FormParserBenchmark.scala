@@ -35,7 +35,7 @@ class TestCounter:
     keg.forms.FormParser.parseMultipart(
       state.inputStream,
       state.boundary,
-      keg.forms.FormParser.FsDest.Null,
+      keg.forms.FormParser.FileDest.Null,
       maxSize = 1024 * 1024,
       maxMetaSize = 512,
       maxFieldSize = 10 * 1024,
