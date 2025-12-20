@@ -1,4 +1,18 @@
 
+case class ChangePasswordRequest(
+    oldPassword: String,
+    newPassword: Int,
+    confirmNewPassword: String
+) derives keg.util.forms.FromForm
+
+@keg.post("/change-password")
+def changePassword(form: keg.util.forms.Form[ChangePasswordRequest]): keg.Response =
+  println(form)
+  keg.Response(
+    data = s"Received form: $form",
+    status = 200
+  )
+
 @keg.get("/")
 def index() =
   val html =
@@ -17,8 +31,22 @@ def index() =
         |    <input type="text" id="value" name="email"><br><br>
         |    <label for="file">File:</label>
         |    <input type="file" id="file" name="file"><br><br>
+        |    <input type="checkbox" id="subscribe" name="subscribe">
         |    <input type="submit" value="Submit">
         |
+        |  </form>
+        |
+        |  <form action="/change-password" method="post">
+        |    <label for="username">Username:</label>
+        |    <input type="text" id="username" name="username"><br><br>
+        |    <label for="oldPassword">Old Password:</label>
+        |    <input type="password" id="oldPassword" name="oldPassword"><br><br>
+        |    <label for="newPassword">New Password:</label>
+        |    <input type="password" id="newPassword" name="newPassword"><br><br>
+        |    <label for="confirmNewPassword">Confirm New Password:</label>
+        |    <input type="password" id="confirmNewPassword" name="confirmNewPassword"><br><br>
+        |    <input type="submit" value="Change Password">
+        |    <input type="submit" value="submit">
         |  </form>
         |
         |</body>
@@ -31,16 +59,13 @@ def index() =
   )
 
 @keg.post("/submit")
-def submitForm(req: keg.Request): keg.Response =
-  val allData = req.body.readAllBytes()
-  val bodyStr = new String(allData, "UTF-8")
-  println(bodyStr)
+def submitForm(req: keg.Request, data: keg.util.forms.FormData): keg.Response =
+  // val allData = req.body.readAllBytes()
+  // val bodyStr = new String(allData, "UTF-8")
+  // println(bodyStr)
   keg.Response(
-    (),
-    status = 302,
-    headers = Seq(
-      "Location" -> "/"
-    )
+    data = data.toString,
+    status = 200
   )
 
   //

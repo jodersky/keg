@@ -1,10 +1,9 @@
 import utest.*
 import keg.util.forms.FormParser
-import FormParser.FormPart
+import keg.util.forms.FormPart
 import java.io.ByteArrayInputStream
 import java.nio.charset.StandardCharsets
 import java.nio.file.{Files, Path}
-import keg.util.forms.FormParser.InvalidFormEncodingException
 
 object FormParserTest extends TestSuite:
 
@@ -96,7 +95,7 @@ object FormParserTest extends TestSuite:
       test("garbage input"):
         val input = "%%%&&&==="
         val stream = new ByteArrayInputStream(input.getBytes(StandardCharsets.UTF_8))
-        assertThrows[InvalidFormEncodingException](FormParser.parseUrlEncoded(stream))
+        assertThrows[FormParser.InvalidFormEncodingException](FormParser.parseUrlEncoded(stream))
 
       test("encoded unicode input"):
         val input = "%E4%BD%A0%E5%A5%BD%E4%B8%96%E7%95%8C=%E2%87%94"
@@ -143,13 +142,13 @@ object FormParserTest extends TestSuite:
 
         assert(result.length == 2)
         result(0) match
-          case FormParser.FormPart.Field(name, value) =>
+          case FormPart.Field(name, value) =>
             assert(name == "username")
             assert(value == "alice")
           case _ => sys.error("Expected Field")
 
         result(1) match
-          case FormParser.FormPart.Field(name, value) =>
+          case FormPart.Field(name, value) =>
             assert(name == "email")
             assert(value == "alice@example.com")
           case _ => sys.error("Expected Field")
@@ -177,7 +176,7 @@ object FormParserTest extends TestSuite:
 
         assert(result.length == 1)
         result(0) match
-          case FormParser.FormPart.File(name, fileName) =>
+          case FormPart.File(name, fileName) =>
             assert(name == "document")
             assert(fileName == "test.txt")
             // Verify file was written
@@ -213,8 +212,8 @@ object FormParserTest extends TestSuite:
         )
 
         assert(result.length == 2)
-        assert(result(0).isInstanceOf[FormParser.FormPart.Field])
-        assert(result(1).isInstanceOf[FormParser.FormPart.File])
+        assert(result(0).isInstanceOf[FormPart.Field])
+        assert(result(1).isInstanceOf[FormPart.File])
 
       test("file size limit"):
         val boundary = "----WebKitFormBoundary7MA4YWxkTrZu0gW"
@@ -303,7 +302,7 @@ object FormParserTest extends TestSuite:
         val boundary = "----WebKitFormBoundary7MA4YWxkTrZu0gW"
         val body = "This is not multipart data at all"
         val stream = new ByteArrayInputStream(body.getBytes(StandardCharsets.UTF_8))
-        assertThrows[InvalidFormEncodingException]:
+        assertThrows[FormParser.InvalidFormEncodingException]:
           FormParser.parseMultipart(
             stream, boundary, dest,
             maxSize = 1024 * 1024,
@@ -334,7 +333,7 @@ object FormParserTest extends TestSuite:
 
         assert(result.length == 1)
         result(0) match
-          case FormParser.FormPart.Field(name, value) =>
+          case FormPart.Field(name, value) =>
             assert(name == "multiline")
             assert(value == specialValue)
           case _ => sys.error("Expected Field")

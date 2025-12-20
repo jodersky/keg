@@ -9,16 +9,32 @@ import java.io.ByteArrayOutputStream
 // https://html.spec.whatwg.org/multipage/form-control-infrastructure.html#multipart-form-data
 // https://www.rfc-editor.org/rfc/rfc7578
 
+enum FormPart:
+  case Field(name0: String, value: String)
+  case File(name0: String, fileName: String) // filename can be used to lookup file on based on FileDest
+
+  // TODO: investigate why name0 can't be called from within the macro, and see how we can avoid these
+  // gymnastics
+  def name = this match
+    case Field(n, _)    => n
+    case File(n, _)     => n
+
+case class FormData(
+  parts: Seq[FormPart]
+)
+
 object FormParser:
+
+  trait FormParserException extends Exception
 
   /** Exception thrown when the form data exceeds the maximum allowed size */
   class FormTooLargeException(val bytesRead: Long, val maxSize: Long)
-      extends Exception(s"Form data exceeded maximum size: $bytesRead > $maxSize bytes")
+      extends Exception(s"Form data exceeded maximum size: $bytesRead > $maxSize bytes") with FormParserException
 
   class FormPartTooLargeException(val partName: String, val partSize: Long, val maxPartSize: Long)
-      extends Exception(s"Form part '$partName' exceeded maximum size: $partSize > $maxPartSize bytes")
+      extends Exception(s"Form part '$partName' exceeded maximum size: $partSize > $maxPartSize bytes") with FormParserException
 
-  class InvalidFormEncodingException(message: String) extends Exception(message)
+  class InvalidFormEncodingException(message: String) extends Exception(message) with FormParserException
 
   private inline def decodeUrl(s: String): String =
     try
@@ -88,10 +104,6 @@ object FormParser:
 
     result.toSeq
 
-  enum FormPart:
-    case Field(name: String, value: String)
-    case File(name: String, fileName: String) // filename can be used to lookup file on based on FileDest
-
   /** Destination for storing uploaded files */
   trait FileDest:
 
@@ -105,7 +117,7 @@ object FormParser:
   object FsDest:
     class Fs(dir: java.nio.file.Path) extends FileDest:
       override def openStream(filename: String): java.io.OutputStream =
-        val safeName = java.util.Base64.getEncoder().encodeToString(filename.getBytes(StandardCharsets.UTF_8))
+        val safeName = java.util.Base64.getUrlEncoder().encodeToString(filename.getBytes(StandardCharsets.UTF_8))
         val path = dir.resolve(safeName)
         java.nio.file.Files.newOutputStream(path)
     object Null extends FileDest:
