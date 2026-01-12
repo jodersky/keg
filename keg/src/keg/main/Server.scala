@@ -40,7 +40,7 @@ class Server(
       60, // flash cookies last for 1 minute, they're consumed on read anyway, so no need to last longer
     csrfAllowedOrigins: Set[String] = Set.empty,
     handleError: (Request, Throwable) => Response = (req, err) =>
-      log.error("Internal Server Error: " + req.uri, err)
+      log.error("Internal Server Error: " + req.path, err)
       Response("Internal Server Error: " + err.getMessage(), 500),
     interceptors: Seq[Interceptor] = Seq.empty
 ):
@@ -55,13 +55,13 @@ class Server(
   private var websocketDispatchTrie = DispatchTrie[keg.model.Endpoint]()
 
   private var handleNotFound: Request => Response = req =>
-    log.info("Not Found: " + req.uri)
+    log.info("Not Found: " + req.path)
     Response("Not Found", 404)
   private var handleMethodNotAllowed: Request => Response = req =>
-    log.info("Method Not Allowed: " + req.uri + " " + req.method)
+    log.info("Method Not Allowed: " + req.path + " " + req.method)
     Response("Method Not Allowed " + req.method, 405)
   private var handleCsrfFailure: Request => Response = req =>
-    log.info("CSRF check failed: " + req.uri)
+    log.info("CSRF check failed: " + req.path)
     Response("Forbidden - CSRF check failed", 403)
 
   private val endpoints1 = if debugMode then
@@ -326,9 +326,17 @@ class Server(
       else
         dispatchTrie.lookup(decodedPathSegments)
 
+      // val path: String =
+      //   uri.indexOf('?') match
+      //     case -1  => uri
+      //     case idx => uri.substring(0, idx)
+
       val request = keg.model.Request(
         method = exchange.getRequestMethod().toString,
-        uri = exchange.getRequestURI() + Option(exchange.getQueryString()),
+        path = exchange.getRequestPath(),
+        queryParams = Server.decodeQueryString(
+          exchange.getQueryString()
+        ),
         headers = headers,
         pathParams = lookupResult.bindings,
         remainingPathSegments = lookupResult.remainingPathSegments,
@@ -403,3 +411,46 @@ object Server:
   // The XNIO library used by Undertow does logging in static initializers,
   // so we need to set this system property before anything else is loaded.
   System.setProperty("org.jboss.logging.provider", "slf4j")
+
+  private def decodeQueryString(qstring: String): Map[String, Seq[String]] =
+
+    var limit = 1024 // params limit
+    var done = false
+    var i = 0
+    val params = scala.collection.mutable
+      .Map[String, scala.collection.mutable.ListBuffer[String]]()
+
+    var nameStart = 0
+    var valueStart = -1
+
+    def addParam(): Boolean =
+      if nameStart >= i then false
+      else
+        if valueStart <= nameStart then valueStart = i + 1
+        val name = java.net.URLDecoder
+          .decode(qstring.substring(nameStart, valueStart - 1), "UTF-8")
+        val value = java.net.URLDecoder
+          .decode(qstring.substring(valueStart - 1, i), "UTF-8")
+        val values = params.getOrElseUpdate(
+          name,
+          scala.collection.mutable.ListBuffer[String]()
+        )
+        values += value
+        true
+
+    while i < qstring.length && !done do
+      qstring.charAt(i) match
+        case '=' =>
+          if nameStart == i then nameStart = i + 1
+          else if valueStart < nameStart then valueStart = i + 1
+        case '&' =>
+          if addParam() then
+            limit -= 1
+            if limit <= 0 then done = true
+          nameStart = i + 1
+        case '#' => done = true
+        case _   => // continue
+      i += 1
+    addParam()
+
+    params.view.mapValues(_.toSeq).toMap

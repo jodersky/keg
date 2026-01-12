@@ -26,6 +26,7 @@ export keg.default.methodNotAllowed
 export keg.default.csrfError
 
 export keg.derivation.routes
+export keg.derivation.Result
 
 export keg.forms.Form
 export keg.forms.FormData

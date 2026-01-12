@@ -25,7 +25,8 @@ object DerivationTest extends TestSuite:
       val response = app.routes.endpoints.head.invoke(
         keg.Request(
           method = "GET",
-          uri = "/hello/Alice€/42/some/extra/path",
+          path = "/hello/Alice€/42/some/extra/path",
+          queryParams = Map(),
           headers = Map(),
           pathParams = Map("name" -> "Alice€", "suffix" -> "42"),
           remainingPathSegments = IndexedSeq("some", "extra", "path"),

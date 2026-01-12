@@ -67,14 +67,14 @@ class LoggingInterceptor extends Interceptor:
     endpoint: Endpoint,
     next: Request => (Response | WsResponse)
   ): Response | WsResponse =
-    log.info(s"Incoming request: ${request.method} ${request.uri}")
+    log.info(s"Incoming request: ${request.method} ${request.path}")
     val response = next(request)
     response match
       case resp: Response =>
-        log.info(s"Response: ${resp.status} for ${request.method} ${request.uri}")
+        log.info(s"Response: ${resp.status} for ${request.method} ${request.path}")
         resp
       case wsResp: WsResponse =>
-        log.info(s"WebSocket response for ${request.method} ${request.uri}")
+        log.info(s"WebSocket response for ${request.method} ${request.path}")
         wsResp
 
 class TimingInterceptor extends Interceptor:

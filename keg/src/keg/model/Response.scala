@@ -71,6 +71,17 @@ object Data:
       override def write(out: java.io.OutputStream): Unit = ()
       override def headers: Seq[(String, String)] = Seq()
 
+  given genyAsData: Conversion[geny.Writable, Data] with
+    def apply(a: geny.Writable): Data = new Data:
+      override def write(out: java.io.OutputStream): Unit =
+        a.writeBytesTo(out)
+
+      override def headers: Seq[(String, String)] =
+        a.httpContentType.map(ct => "Content-Type" -> ct).toSeq ++
+          a.contentLength
+            .map(len => "Content-Length" -> len.toString)
+            .toSeq
+
   // Geny uses Scala 2, so we provide an implicit class for conversions
   implicit class GenyAsDataCompat[A](a: A)(implicit f: A => geny.Writable)
       extends Data:
