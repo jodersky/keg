@@ -1,4 +1,4 @@
-package keg.main
+package keg.util
 
 object log:
   val logger = org.slf4j.LoggerFactory.getLogger("keg")

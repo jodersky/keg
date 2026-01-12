@@ -98,11 +98,39 @@ def notFoundHandler(request: keg.model.Request) =
     headers = Seq("content-type" -> "text/plain; charset=UTF-8")
   )
 
+val icept = new keg.main.TimingInterceptor()
+
+@keg.get("/metrics")
+def metrics() =
+  keg.Response(
+    ustats.Registry.global,
+    200
+  )
+
 val routes = keg.routes()
+
+
+object CustomInterceptor extends keg.main.Interceptor:
+
+  override def intercept(
+    request: keg.model.Request,
+    endpoint: keg.model.Endpoint,
+    next: keg.model.Request => (keg.model.Response | keg.model.WsResponse)
+  ): keg.model.Response | keg.model.WsResponse =
+    println(s"Intercepting request to ${request.path}")
+    val response = next(request)
+    response match
+      case resp: keg.model.Response =>
+        println(s"Response status: ${resp.status}")
+        resp
+      case wsResp: keg.model.WsResponse =>
+        println(s"WebSocket response")
+        wsResp
+
 
 @main def runExampleServer(): Unit =
   println("Starting example server on http://localhost:8080")
-  val server = keg.main.Server(routes.endpoints, debugMode = true)
+  val server = keg.main.Server(routes.endpoints, debugMode = true, interceptors = Seq(icept))
   server.start()
 
   // while true do

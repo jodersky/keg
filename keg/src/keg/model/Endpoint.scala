@@ -27,16 +27,16 @@ case class Endpoint(
   meta: EndpointMeta
 )
 object Endpoint:
-  // TODO: move keg.main.Pos to keg.util.Pos to avoid circular dependencies between packages
-  def apply(selector: EndpointSelector, invoke: Request => (Response | WsResponse))(using meta: keg.main.Pos): Endpoint =
+
+  def apply(selector: EndpointSelector, invoke: Request => (Response | WsResponse))(using pos: keg.util.Pos): Endpoint =
     Endpoint(
       selector,
       invoke,
       EndpointMeta(
-        file = meta.file,
-        line = meta.line,
-        column = meta.column,
-        function = meta.function
+        file = pos.file,
+        line = pos.line,
+        column = pos.column,
+        function = pos.function
       )
     )
 

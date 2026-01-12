@@ -47,6 +47,7 @@ object Reloader:
     val allHeaders = (response.data.headers ++ response.headers).map(elem => elem._1.toLowerCase -> elem._2).toMap
     allHeaders.get("content-type") match
       case Some(html) if html.startsWith("text/html") =>
+        // TODO: stream and modify on the fly instead of buffering everything in memory
         val buffer = new java.io.ByteArrayOutputStream()
         response.data.write(buffer)
         val content = buffer.toString("UTF-8")

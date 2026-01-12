@@ -3,6 +3,7 @@ package keg.main
 import io.undertow as undertow
 import keg.model.Request
 import keg.model.Response
+import keg.util.log
 
 /** A simple HTTP server using Undertow.
   *
@@ -29,7 +30,7 @@ import keg.model.Response
   *   A set of allowed origins for CSRF protection.
   */
 class Server(
-    endpoints: Seq[keg.model.Endpoint],
+    val endpoints: Seq[keg.model.Endpoint],
     port: Int = 8080,
     host: String = "::",
     debugMode: Boolean = true,
@@ -40,7 +41,8 @@ class Server(
     csrfAllowedOrigins: Set[String] = Set.empty,
     handleError: (Request, Throwable) => Response = (req, err) =>
       log.error("Internal Server Error: " + req.uri, err)
-      Response("Internal Server Error: " + err.getMessage(), 500)
+      Response("Internal Server Error: " + err.getMessage(), 500),
+    interceptors: Seq[Interceptor] = Seq.empty
 ):
   private val runtimeSecrets =
     if secrets.nonEmpty then secrets
@@ -107,6 +109,8 @@ class Server(
       case keg.model.EndpointSelector.CsrfError =>
         handleCsrfFailure = endpoint.invoke.asInstanceOf[Request => Response]
   end for
+
+  private val interceptorFn = Interceptor.compose(interceptors)
 
   private given castorContext: castor.Context = castor.Context.Simple(
     castor.Context.Simple.executionContext,
@@ -176,7 +180,7 @@ class Server(
     override def handleRequest(
         exchange: undertow.server.HttpServerExchange
     ): Unit =
-      log.info("request")
+
 
       def writeResponse(response0: keg.model.Response): Unit =
         val response = if debugMode then Reloader.inject(response0) else response0
@@ -347,7 +351,7 @@ class Server(
         else
           lookupResult.items.get(exchange.getRequestMethod().toString) match
             case Some(endpoint) =>
-              val response = endpoint.invoke(request)
+              val response = interceptorFn(request, endpoint)
               response match
                 case simple: keg.model.Response =>
                   writeResponse(simple)
@@ -370,10 +374,19 @@ class Server(
     .build()
 
   def start(): Unit =
-    // Configure JBoss Logging to use SLF4J
+    if interceptors.nonEmpty then
+      log.info("Active interceptors: " + interceptors.map(_.toString()).mkString("\n- ", "\n- ", ""))
+    else
+      log.info("No interceptors active")
 
     log.info(s"Starting Keg Server on port $port")
     server.start()
+    val listeners = server.getListenerInfo().iterator()
+    while listeners.hasNext do
+      val listener = listeners.next()
+      log.info(
+        s"Keg server listening on ${listener.getAddress().asInstanceOf[java.net.InetSocketAddress]}"
+      )
 
   def serverPort() =
     server.getListenerInfo().get(0).getAddress().asInstanceOf[java.net.InetSocketAddress].getPort()

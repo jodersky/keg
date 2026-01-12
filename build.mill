@@ -18,7 +18,8 @@ object keg extends ScalaModule with ScalafmtModule:
     mvn"io.netty:netty-all:4.2.7.Final",
     mvn"io.fusionauth:java-http:1.4.0",
     mvn"com.lihaoyi::upickle:4.0.2",
-    mvn"com.lihaoyi::castor:0.3.0"
+    mvn"com.lihaoyi::castor:0.3.0",
+    mvn"io.crashbox::ustats:0.7.0"
   )
 
   object test extends ScalaTests:
@@ -40,6 +41,15 @@ object `keg-forms` extends ScalaModule with ScalafmtModule:
       mvn"com.lihaoyi::utest:0.9.4"
     )
 
+object `keg-uhttp` extends ScalaModule:
+  def scalaVersion = scala3
+  def scalacOptions = Seq("-deprecation", "-feature", "-unchecked", "-encoding", "utf8", "-preview")
+
+  object test extends ScalaTests:
+    def testFramework = "utest.runner.Framework"
+    def mvnDeps = Seq(
+      mvn"com.lihaoyi::utest:0.9.4"
+    )
 
 object sandbox extends ScalaModule:
   def scalaVersion = scala3
@@ -58,3 +68,10 @@ object bench extends ScalaModule with mill.contrib.jmh.JmhModule:
     mvn"com.lihaoyi::upickle:4.4.1",
     mvn"com.lihaoyi::requests:0.9.0"
   )
+
+object examples extends Module:
+  trait ExampleModule extends ScalaModule:
+    def scalaVersion = scala3
+    def moduleDeps = Seq(keg)
+
+  object oauth2 extends ExampleModule

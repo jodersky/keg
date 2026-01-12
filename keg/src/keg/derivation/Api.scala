@@ -11,12 +11,28 @@ enum Result[+A]:
 
 trait BaseApi:
 
+  /** Type class which defines how to extract a value of type A from a path
+    * segment. */
   trait FromPath[+A]:
     def fromPath(segment: String): Result[A]
 
+  /** Type class which defines how to extract a value of type A from an HTTP
+    * request.
+    *
+    * The implementation can either return a value of type A, or an early
+    * response. For example, you can use this to validate input or return a 400
+    * response, or perform authentication and redirect if the user is not logged
+    * in.
+    *
+    * Note that a `FromRequest` instance is invoked for every parameter of an
+    * `@route` annotated method, in the order of the parameters.
+    */
   trait FromRequest[+A]:
     def fromRequest(request: Request): Result[A]
 
+  /** Type class which defines how to convert a value of type A to an HTTP
+    * response.
+    */
   trait ToResponse[-A]:
     def toResponse(value: A): (Response | WsResponse)
 
@@ -135,7 +151,7 @@ trait Api extends BaseApi:
       try
         val headers = request.headers.mapValues(_.last).toMap
         val parts = keg.forms.FormParser.parse(request.getBody(), headers,
-          keg.forms.FormParser.FileDest.Null
+          keg.forms.FormParser.FileDest.Null // TODO: make configurable
         )
         Result.Continue(keg.forms.FormData(parts))
       catch
