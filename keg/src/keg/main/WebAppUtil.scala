@@ -1,21 +1,33 @@
 package keg.main
 
+import keg.util.MultiDict
+
 // utilities for classic web applications (e.g. CSRF protection, cookie signing)
 object WebAppUtil:
 
-  /** Check if the current request is allowed under CSRF protection rules.
-    * https://words.filippo.io/csrf/
+  /** Check if the current request is allowed under cross-site request forgery
+    * (CSRF) protection rules.
+    *
+    * See https://words.filippo.io/csrf/ and
     * https://cs.opensource.google/go/go/+/refs/tags/go1.25rc2:src/net/http/csrf.go;l=122
+    * for details and rationale behind the rules implemented here.
+    *
+    * @param method The HTTP method of the request (case sensitive)
+    * @param headers The HTTP headers of the request, as a map from header name
+    * to a sequence of values.
+    * @param allowedOrigins The set of allowed origins for cross-origin
+    * requests. This is used to allow certain cross-origin requests, e.g. from a
+    * trusted single-page application running on a different origin.
     */
   def checkCsrf(
       method: String,
-      headers: Map[String, Seq[String]],
+      headers: MultiDict[String, String],
       allowedOrigins: Set[String]
   ): Boolean =
     // val method = method.toUpperCase()
 
     def isExempt(): Boolean =
-      val origin = headers.get("Origin").map(_.head)
+      val origin = headers.get("origin")
       origin match
         case None         => false
         case Some(origin) =>
@@ -25,14 +37,14 @@ object WebAppUtil:
       // safe methods are always allowed
       return true
 
-    headers.get("Sec-Fetch-Site").map(_.head) match
+    headers.get("sec-fetch-site") match
       case None                               => // continue
       case Some("same-origin") | Some("none") =>
         return true
       case _ =>
         return isExempt()
 
-    val origin = headers.get("Origin").map(_.head)
+    val origin = headers.get("origin")
     origin match
       case None =>
         // Neither Sec-Fetch-Site nor Origin headers are present.
@@ -42,7 +54,7 @@ object WebAppUtil:
         try
           val originUrl = new java.net.URI(origin)
           val originHost = originUrl.getHost()
-          val host = headers.get("Host").map(_.head).getOrElse("")
+          val host = headers.get("host").getOrElse("")
           if originHost == host then
             // The Origin header matches the Host header. Note that the Host header
             // doesn't include the scheme, so we don't know if this might be an
@@ -59,6 +71,14 @@ object WebAppUtil:
 
   end checkCsrf
 
+  /** Sign (HMAC) a map of key-value pairs, with an expiration time.
+    *
+    * The resulting string can be safely included in URLs and cookies.
+    *
+    * @param payload The map of key-value pairs to sign
+    * @param expires Expiration time as a Unix timestamp (seconds since epoch)
+    * @param secret The secret (symmetric) key to use for signing
+    */
   def signMap(
       payload: Map[String, String],
       expires: Long,
@@ -113,6 +133,16 @@ object WebAppUtil:
       java.util.Base64.getUrlEncoder.withoutPadding().encodeToString(rawHmac)
     s"$toSign.$signature"
 
+  /** Verify a signed map, returning the original map if the signature is valid
+    * and the expiration time has not passed, or an empty map otherwise.
+    *
+    * This is the inverse of `signMap`, and accepts multiple secrets to allow
+    * for key rotation.
+    *
+    * @param data The signed string to verify
+    * @param secrets The secrets to use for verification
+    * @return The original map if the signature is valid and not expired, or an empty map otherwise.
+    */
   def verifyMap(data: String, secrets: Iterable[Secret]): Map[String, String] =
     val b64 = java.util.Base64.getUrlDecoder
     val parts = data.split('.')

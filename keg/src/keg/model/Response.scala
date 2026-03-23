@@ -2,6 +2,22 @@ package keg.model
 
 import scala.Conversion.into
 
+// Design note: why make Response[A] generic but require Response[Data] in
+// endpoints, instead of making the data field of a response always be of type
+// Data?
+//
+// The reason is a mix of ergonomics and avoiding code duplication. At the end
+// of the day we always need a Response[Data] to actually write to the wire as
+// an HTTP response body, however we'd also like users to be able to pass in
+// common Scala types which can be converted to Data. Furthermore, in our
+// derivation "API" layer, we'd like to be able to customize what types can be
+// converted and how.
+//
+// We could of course create two separate Response classes, one in this package
+// requiring a body of type Data, and one in the derivation package allowing
+// arbitrary data, however not much is gained, hence we decide to make it
+// generic and add a type alias for concrete returnable responses.
+
 /** A simple HTTP response.
   * @param data
   *   The response body data.
@@ -23,8 +39,8 @@ import scala.Conversion.into
   *   a redirect). Note that you *can* keep existing flash data for the next
   *   request by setting flash to null, but this is not common practice.
   */
-case class Response(
-    data: into[Data],
+case class Response[+A](
+    data: into[A],
     status: Int = 200,
     headers: Seq[(String, String)] = Seq.empty,
     cookies: Seq[Cookie] = Seq.empty,
@@ -33,6 +49,8 @@ case class Response(
 )
 // def map[B](f: A => B): Response[B] =
 //   Response(f(Writer), status, headers)
+
+type WebResponse = Response[Data] | WsResponse
 
 trait Data:
 
@@ -48,6 +66,7 @@ trait Data:
   def headers: Seq[(String, String)]
 
 object Data:
+
   given stringAsData: Conversion[String, Data] with
     def apply(a: String): Data = new Data:
       val bytes = a.getBytes(java.nio.charset.StandardCharsets.UTF_8)
@@ -95,22 +114,21 @@ object Data:
           .map(len => "Content-Length" -> len.toString)
           .toSeq
 
-object Response:
+// object Response:
 
-  given dataAsResponse[A](using f: Conversion[A, Data]): Conversion[A, Response]
-  with
-    def apply(a: A): Response =
-      Response(
-        data = f(a),
-        status = 200,
-        headers = Seq.empty
-      )
+//   given dataAsResponse[A](using f: Conversion[A, Data]): Conversion[A, Response[Data]] with
+//     def apply(a: A): Response[Data] =
+//       Response(
+//         data = f(a),
+//         status = 200,
+//         headers = Seq.empty
+//       )
 
-  import scala.language.implicitConversions
+//   import scala.language.implicitConversions
 
-  implicit def compat[A](a: A)(implicit f: A => Data): Response =
-    Response(
-      data = f(a),
-      status = 200,
-      headers = Seq.empty
-    )
+//   implicit def compat[A](a: A)(implicit f: A => Data): Response[Data] =
+//     Response(
+//       data = f(a),
+//       status = 200,
+//       headers = Seq.empty
+//     )

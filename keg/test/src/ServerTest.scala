@@ -8,9 +8,12 @@ object ServerTest extends TestSuite:
         keg.Endpoint(
           selector = keg.EndpointSelector.Simple("/hello", Seq("GET")),
           invoke = (req: keg.Request) =>
-            keg.Response(
-              "Hello, World!",
-            )
+            keg.EndpointResult.Success(
+              keg.Response(
+                "Hello, World!"
+              )
+            ),
+          meta = keg.EndpointMeta()
         )
       )
 
@@ -43,9 +46,12 @@ object ServerTest extends TestSuite:
         keg.Endpoint(
           selector = keg.EndpointSelector.Simple("/hello", Seq("GET")),
           invoke = (req: keg.Request) =>
-            keg.Response(
-              "Hello, World!",
-            )
+            keg.EndpointResult.Success(
+              keg.Response(
+                "Hello, World!",
+              )
+            ),
+          meta = keg.EndpointMeta()
         )
       )
       val server = keg.Server(
@@ -64,23 +70,26 @@ object ServerTest extends TestSuite:
         keg.Endpoint(
           selector = keg.EndpointSelector.Simple("/hello", Seq("GET")),
           invoke = (req: keg.Request) =>
-            keg.Response(
-              "Hello, World!",
-            )
+            keg.EndpointResult.Success(
+              keg.Response("Hello, World!")
+            ),
+          meta = keg.EndpointMeta()
         ),
         keg.Endpoint(
           selector = keg.EndpointSelector.Simple("/goodbye", Seq("GET")),
           invoke = (req: keg.Request) =>
-            keg.Response(
-              "Goodbye, World!",
-            )
+            keg.EndpointResult.Success(
+              keg.Response("Goodbye, World!")
+            ),
+          meta = keg.EndpointMeta()
         ),
         keg.Endpoint(
           selector = keg.EndpointSelector.Simple("/all-methods", Seq("GET", "POST", "PUT", "DELETE", "PATCH")),
           invoke = (req: keg.Request) =>
-            keg.Response(
-              s"Hello via ${req.method}!",
-            )
+            keg.EndpointResult.Success(
+              keg.Response(s"Hello via ${req.method}!")
+            ),
+          meta = keg.EndpointMeta()
         )
       )
 

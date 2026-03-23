@@ -1,5 +1,7 @@
 import utest.*
 
+import keg.util.MultiDict
+
 object DerivationTest extends TestSuite:
 
   val tests = Tests:
@@ -12,7 +14,7 @@ object DerivationTest extends TestSuite:
     test("simple endpoint derivation"):
       object app:
         @keg.get("/hello/:name/:suffix/*")
-        def hello(name: String, suffix: Int, request: keg.Request): keg.Response =
+        def hello(name: String, suffix: Int, request: keg.Request): keg.Response[String] =
           keg.Response(s"Hello, ${name}! Suffix is: ${suffix}, remaining path: ${request.remainingPathSegments.mkString("/")}" )
 
         val routes = keg.routes()
@@ -26,18 +28,19 @@ object DerivationTest extends TestSuite:
         keg.Request(
           method = "GET",
           path = "/hello/Alice€/42/some/extra/path",
-          queryParams = Map(),
-          headers = Map(),
+          queryParams = MultiDict.empty,
+          headers = MultiDict.empty,
           pathParams = Map("name" -> "Alice€", "suffix" -> "42"),
           remainingPathSegments = IndexedSeq("some", "extra", "path"),
           cookies = Map(),
           session = Map(),
           flash = Map(),
-          getBody = () => java.io.ByteArrayInputStream(Array())
+          getBody = () => java.io.ByteArrayInputStream(Array()),
+          remoteIp = java.net.InetAddress.getLoopbackAddress()
         )
       )
       val bytes = java.io.ByteArrayOutputStream()
-      response.asInstanceOf[keg.model.Response].data.write(bytes)
+      response.asInstanceOf[keg.EndpointResult.Success].response.asInstanceOf[keg.Response[keg.Data]].data.write(bytes)
       assert(new String(bytes.toByteArray, "UTF-8") == "Hello, Alice€! Suffix is: 42, remaining path: some/extra/path")
 
     test("FromPath not found"):
@@ -46,7 +49,7 @@ object DerivationTest extends TestSuite:
           class Foo
 
           @keg.get("/item/:id")
-          def getItem(id: Foo): keg.Response =
+          def getItem(id: Foo): keg.Response[keg.Data] =
             keg.Response(s"Item ID: $id")
 
           val routes = keg.routes()
@@ -59,7 +62,7 @@ object DerivationTest extends TestSuite:
           class Foo
 
           @keg.get("/item/")
-          def getItem(id: Foo): keg.Response =
+          def getItem(id: Foo): keg.Response[keg.Data] =
             keg.Response(s"Item ID: $id")
 
           val routes = keg.routes()
@@ -96,20 +99,16 @@ object DerivationTest extends TestSuite:
     test("error annotations"):
       object app:
         @keg.notFound()
-        def notFoundHandler(): keg.Response =
+        def notFoundHandler(): keg.Response[keg.Data] =
           keg.Response("Not Found", 404)
 
         @keg.methodNotAllowed()
-        def methodNotAllowedHandler(): keg.Response =
+        def methodNotAllowedHandler(): keg.Response[keg.Data] =
           keg.Response("Method Not Allowed", 405)
-
-        @keg.csrfError()
-        def csrfErrorHandler(): keg.Response =
-          keg.Response("CSRF Error", 403)
 
         val routes = keg.routes()
 
-      assert(app.routes.endpoints.length == 3)
+      assert(app.routes.endpoints.length == 2)
       val selectors = app.routes.endpoints.map(_.selector)
       assert(selectors.exists {
         case keg.model.EndpointSelector.NotFound => true
@@ -117,9 +116,5 @@ object DerivationTest extends TestSuite:
       })
       assert(selectors.exists {
         case keg.model.EndpointSelector.MethodNotAllowed => true
-        case _ => false
-      })
-      assert(selectors.exists {
-        case keg.model.EndpointSelector.CsrfError => true
         case _ => false
       })

@@ -1,12 +1,14 @@
 package keg.model
 
+import keg.util.MultiDict
+
 /** A HTTP request.
   * @param method
   *   The HTTP method (e.g. GET, POST, etc).
   * @param uri
   *   The full request URI, including query string.
   * @param headers
-  *   The request headers.
+  *   The request headers. Always lowercase.
   * @param pathParams
   *   The path parameters extracted from the URL. For example, for a route
   *   `/users/:id`, the path parameter `id` would be extracted here.
@@ -30,13 +32,14 @@ case class Request(
     // exchange: HttpServerExchange,
     method: String,
     path: String,
-    queryParams: Map[String, Seq[String]],
-    headers: Map[String, Seq[String]],
+    queryParams: MultiDict[String, String],
+    headers: MultiDict[String, String],
     pathParams: Map[String, String],
     remainingPathSegments: collection.IndexedSeq[String],
     cookies: Map[String, Cookie],
     session: Map[String, String],
     flash: Map[String, String],
-    getBody: () => java.io.InputStream
+    getBody: () => java.io.InputStream,
+    remoteIp: java.net.InetAddress
 ):
   def body = getBody()

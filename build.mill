@@ -1,77 +1,119 @@
 //| mill-version: 1.0.6
 //| mvnDeps: ["com.lihaoyi::mill-contrib-jmh:$MILL_VERSION"]
 
-import mill.*, scalalib.*, scalafmt.*
+import mill.*, scalalib.*, scalanativelib.*, scalafmt.*
+import build.thirdparty
+import mill.api.Task.Simple
 
-val scala3 = "3.8.0-RC1"
+val scala3 = "3.8.2"
+val scalaNative = "0.5.10"
 
 object keg extends ScalaModule with ScalafmtModule:
   def scalaVersion = scala3
   def scalacOptions = Seq("-deprecation", "-feature", "-unchecked", "-encoding", "utf8", "-preview")
 
   def mvnDeps = Seq(
-    mvn"org.slf4j:slf4j-api:2.0.9",
-    mvn"org.slf4j:slf4j-simple:2.0.9",
-    // mvn"org.jboss.slf4j:slf4j-jboss-logmanager:2.0.1.Final",
-    mvn"com.lihaoyi::upickle:4.4.1",
-    mvn"io.undertow:undertow-core:2.3.20.Final",
-    mvn"io.netty:netty-all:4.2.7.Final",
-    mvn"io.fusionauth:java-http:1.4.0",
-    mvn"com.lihaoyi::upickle:4.0.2",
-    mvn"com.lihaoyi::castor:0.3.0",
-    mvn"io.crashbox::ustats:0.7.0"
+    thirdparty.slf4jSimple,
+    thirdparty.upickle,
+    thirdparty.undertow,
+    thirdparty.castor,
+    thirdparty.ustats,
+    thirdparty.caffeine
   )
 
   object test extends ScalaTests:
     def testFramework = "utest.runner.Framework"
     def mvnDeps = Seq(
-      mvn"com.lihaoyi::utest:0.9.4",
-      mvn"com.lihaoyi::requests:0.9.0"
+      thirdparty.utest,
+      thirdparty.requests
     )
 
-  def moduleDeps = Seq(`keg-forms`)
+  def moduleDeps = Seq(forms)
 
-object `keg-forms` extends ScalaModule with ScalafmtModule:
-  def scalaVersion = scala3
-  def scalacOptions = Seq("-deprecation", "-feature", "-unchecked", "-encoding", "utf8", "-preview")
+  object forms extends ScalaModule with ScalafmtModule:
+    def scalaVersion = scala3
+    def scalacOptions = Seq("-deprecation", "-feature", "-unchecked", "-encoding", "utf8", "-preview")
 
-  object test extends ScalaTests:
-    def testFramework = "utest.runner.Framework"
+     object test extends ScalaTests:
+      def testFramework = "utest.runner.Framework"
+      def mvnDeps = Seq(thirdparty.utest)
+
+// object `keg-forms` extends ScalaModule with ScalafmtModule:
+//   def scalaVersion = scala3
+//   def scalacOptions = Seq("-deprecation", "-feature", "-unchecked", "-encoding", "utf8", "-preview")
+
+//   object test extends ScalaTests:
+//     def testFramework = "utest.runner.Framework"
+//     def mvnDeps = Seq(thirdparty.utest)
+
+// object `keg-forms2` extends ScalaModule with ScalafmtModule:
+//   def scalaVersion = scala3
+//   def scalacOptions = Seq("-deprecation", "-feature", "-unchecked", "-encoding", "utf8", "-preview")
+
+//   object test extends ScalaTests:
+//     def testFramework = "utest.runner.Framework"
+//     def mvnDeps = Seq(thirdparty.utest)
+
+object uhttp extends Module:
+
+  trait UhttpModule extends ScalaModule:
+    def scalaVersion = scala3
+    def scalacOptions = Seq("-deprecation", "-feature", "-unchecked", "-encoding", "utf8", "-preview")
+
     def mvnDeps = Seq(
-      mvn"com.lihaoyi::utest:0.9.4"
+      thirdparty.geny
     )
 
-object `keg-uhttp` extends ScalaModule:
-  def scalaVersion = scala3
-  def scalacOptions = Seq("-deprecation", "-feature", "-unchecked", "-encoding", "utf8", "-preview")
+    def moduleDir = super.moduleDir / os.up
 
-  object test extends ScalaTests:
-    def testFramework = "utest.runner.Framework"
-    def mvnDeps = Seq(
-      mvn"com.lihaoyi::utest:0.9.4"
-    )
+    object test extends ScalaTests:
+      def testFramework = "utest.runner.Framework"
+      def mvnDeps = Seq(thirdparty.utest)
+
+  object jvm extends UhttpModule
+  object native extends UhttpModule with ScalaNativeModule:
+    def scalaNativeVersion = scalaNative
 
 object sandbox extends ScalaModule:
   def scalaVersion = scala3
   def moduleDeps = Seq(keg)
 
-  def mvnDeps = Seq(
-    mvn"com.lihaoyi::scalatags:0.13.1"
-  )
+  def scalacOptions = Seq("-Xprint:postInlining", "-feature")
 
-object bench extends ScalaModule with mill.contrib.jmh.JmhModule:
-  def scalaVersion = scala3
-  def jmhCoreVersion = "1.37"
-  def moduleDeps = Seq(keg)
+  def mvnDeps = Seq(thirdparty.scalatags)
 
-  def mvnDeps = super.mvnDeps() ++ Seq(
-    mvn"com.lihaoyi::upickle:4.4.1",
-    mvn"com.lihaoyi::requests:0.9.0"
-  )
+// object bench extends ScalaModule with mill.contrib.jmh.JmhModule:
+//   def scalaVersion = scala3
+//   def jmhCoreVersion = "1.37"
+//   def moduleDeps = Seq(keg)
+
+//   def mvnDeps = super.mvnDeps() ++ Seq(
+//     thirdparty.upickle,
+//     thirdparty.requests
+//   )
 
 object examples extends Module:
   trait ExampleModule extends ScalaModule:
     def scalaVersion = scala3
     def moduleDeps = Seq(keg)
+    def scalacOptions = Seq("-explain-cyclic")
 
-  object oauth2 extends ExampleModule
+    object test extends ScalaTests:
+      def testFramework = "utest.runner.Framework"
+      def mvnDeps = Seq(
+        thirdparty.utest,
+        thirdparty.requests
+      )
+
+  object oauth2 extends ExampleModule:
+    def mvnDeps = super.mvnDeps() ++ Seq(
+      thirdparty.scalatags
+    )
+  object endpoints extends ExampleModule
+
+  object reloader extends ExampleModule:
+    def mvnDeps = super.mvnDeps() ++ Seq(
+      thirdparty.scalatags
+    )
+
+  object forms extends ExampleModule

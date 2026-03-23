@@ -8,20 +8,23 @@ object WsTest extends TestSuite:
       val server = keg.Server(
         endpoints = Seq(
           keg.Endpoint(
-            selector = keg.EndpointSelector.WebSocketUpgrade("/ws"),
-            invoke = req =>
-              keg.WsResponse(
-                channel =>
-                  channel.send(keg.Ws.Text("hello from server!"))
-                  keg.WsActor:
-                    case keg.Ws.Text(txt) =>
-                      channel.send(keg.Ws.Text(s"echo: $txt"))
-                    case keg.Ws.Close(code, reason) =>
-                      println(s"Received close: $code - $reason")
-                      latch.countDown()
-                    case keg.Ws.ChannelClosed() =>
-                      println("WebSocket channel closed")
-              )
+                selector = keg.EndpointSelector.WebSocketUpgrade("/ws"),
+                invoke = (req: keg.Request) =>
+              keg.EndpointResult.Success(
+                keg.WsResponse(
+                  channel =>
+                    channel.send(keg.Ws.Text("hello from server!"))
+                    keg.WsActor:
+                      case keg.Ws.Text(txt) =>
+                        channel.send(keg.Ws.Text(s"echo: $txt"))
+                      case keg.Ws.Close(code, reason) =>
+                        println(s"Received close: $code - $reason")
+                        latch.countDown()
+                      case keg.Ws.ChannelClosed() =>
+                        println("WebSocket channel closed")
+                )
+              ),
+            keg.EndpointMeta()
           )
         ),
         port = 0

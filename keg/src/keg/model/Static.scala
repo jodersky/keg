@@ -5,23 +5,55 @@ import java.io.OutputStream
 object MimeTypes:
 
   final val ByExtension: Map[String, String] = Map(
-    "html" -> "text/html; charset=UTF-8",
-    "htm"  -> "text/html; charset=UTF-8",
+    "3gp"  -> "video/3gpp",
+    "aac"  -> "audio/aac",
+    "apng" -> "image/apng",
+    "avi"  -> "video/x-msvideo",
+    "avif" -> "image/avif",
     "css"  -> "text/css; charset=UTF-8",
+    "csv"  -> "text/csv; charset=UTF-8",
+    "eot"   -> "application/vnd.ms-fontobject",
+    "flac" -> "audio/flac",
+    "gif"  -> "image/gif",
+    "gz"    -> "application/gzip",
+    "htm"  -> "text/html; charset=UTF-8",
+    "html" -> "text/html; charset=UTF-8",
+    "ico"   -> "image/x-icon",
+    "jpeg" -> "image/jpeg",
+    "jpg"  -> "image/jpeg",
     "js"   -> "application/javascript; charset=UTF-8",
     "json" -> "application/json; charset=UTF-8",
-    "png"  -> "image/png",
-    "jpg"  -> "image/jpeg",
-    "jpeg" -> "image/jpeg",
-    "gif"  -> "image/gif",
-    "svg"  -> "image/svg+xml",
-    "txt"  -> "text/plain; charset=UTF-8",
-    "xml"  -> "application/xml; charset=UTF-8",
+    "jsx"  -> "application/javascript; charset=UTF-8",
+    "md"   -> "text/markdown; charset=UTF-8",
+    "mjs"  -> "application/javascript; charset=UTF-8",
+    "mkv"  -> "video/x-matroska",
+    "mov"  -> "video/quicktime",
+    "mp3"   -> "audio/mpeg",
+    "mp4"   -> "video/mp4",
+    "ogg"  -> "audio/ogg",
+    "otf"   -> "font/otf",
     "pdf"  -> "application/pdf",
-    "md"   -> "text/markdown; charset=UTF-8"
+    "png"  -> "image/png",
+    "svg"  -> "image/svg+xml",
+    "tar"   -> "application/x-tar",
+    "toml" -> "application/toml; charset=UTF-8",
+    "ts"   -> "text/typescript; charset=UTF-8",
+    "tsx"  -> "application/typescript; charset=UTF-8",
+    "ttf"   -> "font/ttf",
+    "txt"  -> "text/plain; charset=UTF-8",
+    "wav"   -> "audio/wav",
+    "weba" -> "audio/webp",
+    "webm"  -> "video/webm",
+    "webp"  -> "image/webp",
+    "woff"  -> "font/woff",
+    "woff2" -> "font/woff2",
+    "xml"  -> "application/xml; charset=UTF-8",
+    "yaml" -> "application/x-yaml; charset=UTF-8",
+    "yml"  -> "application/x-yaml; charset=UTF-8",
+    "zip"   -> "application/zip",
   )
 
-  def fromPath(path: String) =
+  def fromPath(path: String): String =
     val dotIndex = path.lastIndexOf('.')
     if dotIndex >= 0 && dotIndex < path.length - 1 then
       val extension = path.substring(dotIndex + 1).toLowerCase()
@@ -39,7 +71,7 @@ object Static:
     *
     * @see staticFiles for a version that safely handles user-provided subpaths.
     */
-  def staticFile(path: String): Response =
+  def staticFile(path: String): Response[Data] =
     val headers = Seq(
       "Content-Type" -> MimeTypes.fromPath(path),
       "Cache-Control" -> "max-age=604800,public,immutable"
@@ -69,7 +101,7 @@ object Static:
     * @see staticResources for a version that safely handles user-provided
     * subpaths.
     */
-  def staticResource(path: String): Response =
+  def staticResource(path: String): Response[Data] =
     val headers = Seq(
       "Content-Type" -> MimeTypes.fromPath(path),
       "Cache-Control" -> "max-age=604800,public,immutable"
@@ -97,7 +129,7 @@ object Static:
     * This method rejects any path segments that are `..` or `.` to avoid path
     * traversal attacks.
     */
-  def staticFiles(directory: String, remainingPathSegments: Iterable[String]): Response =
+  def staticFiles(directory: String, remainingPathSegments: Iterable[String]): Response[Data] =
     if remainingPathSegments.isEmpty then
       return Response((), 404)
 
@@ -115,7 +147,7 @@ object Static:
 
     staticFile(fullPath.toString())
 
-  def staticResources(directory: String, remainingPathSegments: Iterable[String]): Response =
+  def staticResources(directory: String, remainingPathSegments: Iterable[String]): Response[Data] =
     if remainingPathSegments.isEmpty then
       return Response((), 404)
 

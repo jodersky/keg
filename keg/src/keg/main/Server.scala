@@ -3,7 +3,29 @@ package keg.main
 import io.undertow as undertow
 import keg.model.Request
 import keg.model.Response
+import keg.model.WebResponse
+import keg.model.Data
+import keg.model.Endpoint
+import keg.model.Recovery
+import keg.model.EndpointMeta
+import keg.model.EndpointSelector
+import keg.model.WsResponse
+import keg.model.EndpointResult
 import keg.util.log
+import keg.model.Recovery
+import keg.main.DispatchTrie.DispatchLookup
+import scala.compiletime.ops.int
+
+case class EndpointAbortedException(
+  code: Int,
+  endpoint: keg.model.Endpoint,
+  pos: keg.util.Pos,
+  message: String,
+) extends Exception(message)
+
+enum Listener:
+  case Http(host: String, port: Int)
+  case Https(host: String, port: Int, cert: String, key: String)
 
 /** A simple HTTP server using Undertow.
   *
@@ -30,87 +52,134 @@ import keg.util.log
   *   A set of allowed origins for CSRF protection.
   */
 class Server(
-    val endpoints: Seq[keg.model.Endpoint],
+    val endpoints: Seq[Endpoint | Recovery],
     port: Int = 8080,
     host: String = "::",
-    debugMode: Boolean = true,
+    debugMode: Boolean = Server.debugFromEnv,
     secrets: Seq[Secret] = Seq.empty,
     sessionMaxAgeSeconds: Int = 3600,
     flashMaxAgeSeconds: Int =
       60, // flash cookies last for 1 minute, they're consumed on read anyway, so no need to last longer
     csrfAllowedOrigins: Set[String] = Set.empty,
-    handleError: (Request, Throwable) => Response = (req, err) =>
-      log.error("Internal Server Error: " + req.path, err)
-      Response("Internal Server Error: " + err.getMessage(), 500),
-    interceptors: Seq[Interceptor] = Seq.empty
+    interceptors: Seq[Interceptor] = Seq.empty,
+    debugInterceptors: Seq[Interceptor] = Seq(Reloader),
+    listeners: Seq[Listener] = Seq()
 ):
+  log.info(s"Debug mode: $debugMode")
+  log.info(s"Initializing Keg Server with ${endpoints.size} endpoints")
+
   private val runtimeSecrets =
     if secrets.nonEmpty then secrets
     else if debugMode then
-      log.warn("No secrets provided for Server, using random secret in debug mode")
+      log.warn("No secrets provided for server in debug mode, using random persisted secret.")
+      Seq(Secret.fromTmp())
+    else
+      log.warn("No secrets provided for server, using random secret. This means that sessions and flash will not be valid across server restarts, and any existing cookies will be invalidated!")
       Seq(Secret.random())
-    else throw new Exception("No secrets provided for Server in non-debug mode")
 
-  private val dispatchTrie = DispatchTrie[keg.model.Endpoint]()
-  private var websocketDispatchTrie = DispatchTrie[keg.model.Endpoint]()
 
-  private var handleNotFound: Request => Response = req =>
-    log.info("Not Found: " + req.path)
-    Response("Not Found", 404)
-  private var handleMethodNotAllowed: Request => Response = req =>
-    log.info("Method Not Allowed: " + req.path + " " + req.method)
-    Response("Method Not Allowed " + req.method, 405)
-  private var handleCsrfFailure: Request => Response = req =>
-    log.info("CSRF check failed: " + req.path)
-    Response("Forbidden - CSRF check failed", 403)
+  private def mkInvoke(ep: Endpoint): Request => WebResponse = (req: Request) =>
+    if WebAppUtil.checkCsrf(req.method, req.headers, csrfAllowedOrigins) then
+      ep.invoke(req) match
+        case EndpointResult.Success(response) => response
+        case failure: EndpointResult.Failure => recovery.invoke(req, ep, failure)
+    else
+      recovery.invoke(req, ep, EndpointResult.Failure.MethodAbort(403, "CSRF validation failed"))
 
-  private val endpoints1 = if debugMode then
-    endpoints ++ Reloader.endpoints
-  else
-    endpoints
+  private val dispatchTrie = DispatchTrie[(Endpoint, Request => WebResponse)]()
+  private val websocketDispatchTrie = DispatchTrie[(Endpoint, Request => WebResponse)]()
 
-  for endpoint <- endpoints1 do
-    endpoint.selector match
-      case sel: keg.model.EndpointSelector.Simple =>
-        for method <- sel.methods do
-          dispatchTrie.add(
-            Util.splitPath(sel.path),
-            method,
-            endpoint
-          ) match
-            case DispatchTrie.AddResult.Ok => ()
-            case DispatchTrie.AddResult.MethodConflict(path, items) =>
+  private var notFoundEndpoint: Endpoint = Server.defaultNotFoundEndpoint
+  private var notFoundFn: Request => WebResponse = mkInvoke(notFoundEndpoint)
+  private var methodNotAllowedEndpoint: Endpoint = Server.defaultMethodNotAllowedEndpoint
+  private var methodNotAllowedFn: Request => WebResponse = mkInvoke(methodNotAllowedEndpoint)
+
+  private var recovery: Recovery =
+    if debugMode then
+      val fn = (req: Request, ep: Endpoint, failure: EndpointResult.Failure) =>
+        failure match
+          case EndpointResult.Failure.ParamAbort(param, code, message) =>
+            Response[keg.Data](s"Parameter '$param' is invalid: $message", code)
+          case EndpointResult.Failure.MethodAbort(code, message) =>
+            Response[keg.Data](message, code)
+          case EndpointResult.Failure.Exception(throwable) =>
+            log.error(s"Error in endpoint ${ep.meta} for request ${req.method} ${req.path}", throwable)
+            Response[keg.Data]("Internal Server Error " + throwable.getMessage, 500)
+      Recovery(fn)
+    else
+      val fn = (req: Request, ep: Endpoint, failure: EndpointResult.Failure) =>
+        failure match
+          case EndpointResult.Failure.ParamAbort(_, code, _) =>
+            Response[keg.Data]("Bad Request", code)
+          case EndpointResult.Failure.MethodAbort(code, message) =>
+            Response[keg.Data](message, code)
+          case EndpointResult.Failure.Exception(throwable) =>
+            log.error(s"Error in endpoint ${ep.meta} for request ${req.method} ${req.path}", throwable)
+            Response[keg.Data]("Internal Server Error", 500)
+      Recovery(fn)
+
+  private val activeInterceptors =
+    if debugMode then interceptors ++ debugInterceptors
+    else interceptors
+
+  private def addToTry(
+    trie: DispatchTrie[(Endpoint, Request => WebResponse)],
+    path: String,
+    methods: Seq[String],
+    endpoint: Endpoint
+  ): Unit =
+    val invokeFn = mkInvoke(endpoint)
+    val segs = Util.splitPath(path)
+
+    for method <- methods do
+      trie.add(
+        segs,
+        method,
+        (endpoint, invokeFn)
+      ) match
+        case DispatchTrie.AddResult.Ok => ()
+        case DispatchTrie.AddResult.MethodConflict(path, items) =>
+          throw new Exception(
+            s"Method conflict when adding endpoint ${endpoint.meta} $methods $path: existing endpoints ${items.map { case (method, (ep, _)) => s"$method -> ${ep.meta}" }.mkString(", ")}"
+          )
+        case DispatchTrie.AddResult.SubpathConflict(path, items) =>
+          throw new Exception(
+            s"Subpath conflict when adding endpoint ${endpoint.meta} $methods $path: existing endpoints: ${items.values.map(_._1.meta).mkString(", ")}"
+          )
+
+  for endpoint <- activeInterceptors.flatMap(_.endpoints) ++ endpoints do
+    endpoint match
+      case r: Recovery =>
+        if debugMode then
+          log.warn(s"Ignoring recovery handler because debugMode is enabled")
+        else
+          recovery = r
+      case ep: Endpoint =>
+        ep.selector match
+          case EndpointSelector.Simple(path, methods) =>
+            addToTry(dispatchTrie, path, methods, ep)
+          case EndpointSelector.WebSocketUpgrade(path) =>
+            addToTry(websocketDispatchTrie, path, Seq("GET"), ep)
+          case EndpointSelector.NotFound =>
+            if notFoundEndpoint ne Server.defaultNotFoundEndpoint then
               throw new Exception(
-                s"Method conflict when adding endpoint ${endpoint.meta} $method ${sel.path}: existing endpoint ${items(method).meta}"
+                s"Multiple NotFound endpoints defined: ${notFoundEndpoint.meta} and ${ep.meta}"
               )
-            case DispatchTrie.AddResult.SubpathConflict(path, items) =>
+            else
+              notFoundEndpoint = ep
+              notFoundFn = mkInvoke(notFoundEndpoint)
+          case EndpointSelector.MethodNotAllowed =>
+            if methodNotAllowedEndpoint ne Server.defaultMethodNotAllowedEndpoint then
               throw new Exception(
-                s"Subpath conflict when adding endpoint ${endpoint.meta} $method ${sel.path}: existing endpoints: ${items.values.map(_.meta).mkString(", ")}"
+                s"Multiple MethodNotAllowed endpoints defined: ${methodNotAllowedEndpoint.meta} and ${ep.meta}"
               )
-      case sel: keg.model.EndpointSelector.WebSocketUpgrade =>
-        websocketDispatchTrie.add(
-          Util.splitPath(sel.path),
-          "GET",
-          endpoint
-        ) match
-          case DispatchTrie.AddResult.Ok => ()
-          case DispatchTrie.AddResult.MethodConflict(path, items) =>
-            throw new Exception(
-              s"Method conflict when adding endpoint ${endpoint.meta} ${sel.path}: existing endpoint ${items("GET").meta}"
-            )
-          case DispatchTrie.AddResult.SubpathConflict(path, items) =>
-            throw new Exception(
-              s"Subpath conflict when adding endpoint ${endpoint.meta} ${sel.path}: existing endpoints: ${items.values.map(_.meta).mkString(", ")}"
-            )
-      case keg.model.EndpointSelector.NotFound =>
-        handleNotFound = endpoint.invoke.asInstanceOf[Request => Response]
-      case keg.model.EndpointSelector.MethodNotAllowed =>
-        handleMethodNotAllowed = endpoint.invoke.asInstanceOf[Request => Response]
-      case keg.model.EndpointSelector.CsrfError =>
-        handleCsrfFailure = endpoint.invoke.asInstanceOf[Request => Response]
+            else
+              methodNotAllowedEndpoint = ep
+              methodNotAllowedFn = mkInvoke(methodNotAllowedEndpoint)
   end for
 
-  private val interceptorFn = Interceptor.compose(interceptors)
+  private val interceptorFn =
+    Interceptor.compose(activeInterceptors)
 
   private given castorContext: castor.Context = castor.Context.Simple(
     castor.Context.Simple.executionContext,
@@ -182,7 +251,7 @@ class Server(
     ): Unit =
 
 
-      def writeResponse(response0: keg.model.Response): Unit =
+      def writeSimpleResponse(response0: keg.model.Response[keg.model.Data]): Unit =
         val response = if debugMode then Reloader.inject(response0) else response0
 
         exchange.setStatusCode(response.status)
@@ -273,16 +342,18 @@ class Server(
 
         val out = exchange.getOutputStream()
         response.data.write(out)
-      end writeResponse
+      end writeSimpleResponse
+
+      val headersMap = collection.mutable.Map.empty[String, collection.mutable.ListBuffer[String]]
+
+      exchange.getRequestHeaders().forEach: headerValues =>
+        val headerName = headerValues.getHeaderName.toString.toLowerCase
+        val values = headersMap.getOrElseUpdate(headerName, collection.mutable.ListBuffer.empty[String])
+        headerValues.forEach(value => values += value)
+
+      val headers = keg.util.MultiDict(headersMap)
 
       import scala.jdk.CollectionConverters.given
-      val headers = exchange
-        .getRequestHeaders()
-        .asScala
-        .map { header =>
-          header.getHeaderName.toString().toLowerCase -> header.asScala.toSeq
-        }
-        .toMap
 
       val cookies = exchange
         .requestCookies()
@@ -334,7 +405,7 @@ class Server(
       val request = keg.model.Request(
         method = exchange.getRequestMethod().toString,
         path = exchange.getRequestPath(),
-        queryParams = Server.decodeQueryString(
+        queryParams = Util.decodeQueryString(
           exchange.getQueryString()
         ),
         headers = headers,
@@ -343,57 +414,120 @@ class Server(
         cookies = cookies,
         session = sessionData,
         flash = flashData,
-        getBody = () => exchange.getInputStream()
+        getBody = () => exchange.getInputStream(),
+        remoteIp = exchange.getSourceAddress().getAddress()
       )
 
-      try
-        WebAppUtil.checkCsrf(request.method, headers, csrfAllowedOrigins) match
-          case false =>
-            val response = Response("Forbidden - CSRF check failed", 403)
-            writeResponse(response)
-            return
-          case true => // continue
+      // def writeResponseOrError(ep: Endpoint, result: EndpointResult): Unit =
+      //   result match
+      //     case EndpointResult.Success(response: Response[keg.model.Data]) =>
+      //       writeResponse(response)
+      //     case EndpointResult.Success(wsResponse: WsResponse) =>
+      //       val wsHandler = WsHandler(wsResponse.f)
+      //       io.undertow.Handlers.websocket(wsHandler).handleRequest(exchange)
+      //     case f: EndpointResult.Failure =>
+      //       writeResponse(recovery.invoke(request, ep, f))
 
-        if lookupResult.items.isEmpty then
-          writeResponse(handleNotFound(request))
-        else
-          lookupResult.items.get(exchange.getRequestMethod().toString) match
-            case Some(endpoint) =>
-              val response = interceptorFn(request, endpoint)
-              response match
-                case simple: keg.model.Response =>
-                  writeResponse(simple)
-                case wsResponse: keg.model.WsResponse =>
-                  val wsHandler = WsHandler(wsResponse.f)
-                  io.undertow.Handlers.websocket(wsHandler).handleRequest(exchange)
+      def writeResponse(response: WebResponse): Unit = response match
+        case simple: keg.model.Response[keg.model.Data] =>
+          writeSimpleResponse(simple)
+        case wsResponse: WsResponse =>
+          val wsHandler = WsHandler(wsResponse.f)
+          io.undertow.Handlers.websocket(wsHandler).handleRequest(exchange)
 
-            case None =>
-              writeResponse(handleMethodNotAllowed(request))
-      catch
-        case err: Throwable =>
-          val response = handleError(request, err)
-          writeResponse(response)
+      if lookupResult.items.isEmpty then
+        writeResponse(interceptorFn(request, notFoundEndpoint, notFoundFn))
+      else
+        lookupResult.items.get(exchange.getRequestMethod().toString) match
+          case Some(endpoint, fn) =>
+            writeResponse(interceptorFn(request, endpoint, fn))
+            // WebAppUtil.checkCsrf(request.method, headers, csrfAllowedOrigins) match
+            //   case false =>
+            //     writeResponse(recovery.invoke(request, endpoint, EndpointResult.Failure.MethodAbort(403, "CSRF validation failed")))
+            //   case true =>
+            //     writeResponseOrError(
+            //       endpoint,
+            //       endpoint.invoke(request)
+            //     )
+          case None =>
+            writeResponse(interceptorFn(request, notFoundEndpoint, methodNotAllowedFn))
+
+
+      // try
+      //   // WebAppUtil.checkCsrf(request.method, headers, csrfAllowedOrigins) match
+      //   //   case false =>
+      //   //     val result = recovery.invoke(request, ???, EndpointResult.Failure.MethodAbort(403, "CSRF validation failed"))
+      //   //     result match
+      //   //       case EndpointResult.Success(response) =>
+      //   //         writeResponse(response)
+      //   //       case EndpointResult.Failure(failure) =>
+      //   //         val response = recovery.invoke(request, ???, failure)
+      //   //         writeResponse(response)
+
+      //   //     return
+      //   //   case true => // continue
+
+      //   if lookupResult.items.isEmpty then
+      //     writeResponse(abortedEndpoint.invoke(request, 404, "Not Found"))
+      //   else
+      //     lookupResult.items.get(exchange.getRequestMethod().toString) match
+      //       case Some(endpoint) =>
+      //         try
+      //           val response = interceptorFn(request, endpoint)
+      //           response match
+      //             case simple: keg.model.Response[keg.model.Data] =>
+      //               writeResponse(simple)
+      //             case wsResponse: keg.model.WsResponse =>
+      //               val wsHandler = WsHandler(wsResponse.f)
+      //               io.undertow.Handlers.websocket(wsHandler).handleRequest(exchange)
+      //         catch
+      //           case EndpointAbortedException(code, endpoint, pos, message) =>
+      //             val message1 = s"Endpoint aborted with code $code at ${pos.file}:${pos.line}:${pos.column} in ${pos.function}: $message"
+      //             val response = abortedEndpoint.invoke(request, code, message1)
+      //             writeResponse(response)
+
+      //       case None =>
+      //         writeResponse(abortedEndpoint.invoke(request, 405, "Method Not Allowed"))
+      // catch
+      //   case err: Throwable =>
+      //     val response = errorEndpoint.invoke(request, err)
+      //     writeResponse(response)
   end handler
 
-  private val server = undertow.Undertow
-    .builder()
-    .addHttpListener(port, host)
-    .setHandler(undertow.server.handlers.BlockingHandler(handler))
-    .build()
+  private val server =
+    val builder = undertow.Undertow
+      .builder()
+      .setHandler(undertow.server.handlers.BlockingHandler(handler))
+      .addHttpListener(port, host)
+
+    for listener <- listeners do
+      listener match
+        case Listener.Http(host, port) =>
+          builder.addHttpListener(port, host)
+        case Listener.Https(host, port, cert, key) =>
+          val sslContext = Util.mkSslContext(key, cert)
+          builder.addHttpsListener(port, host, sslContext)
+
+    builder.build()
 
   def start(): Unit =
-    if interceptors.nonEmpty then
-      log.info("Active interceptors: " + interceptors.map(_.toString()).mkString("\n- ", "\n- ", ""))
+    if activeInterceptors.nonEmpty then
+      log.info("Active interceptors: " + activeInterceptors.map(_.toString()).mkString("\n- ", "\n- ", ""))
     else
       log.info("No interceptors active")
+    for interceptor <- activeInterceptors do
+      interceptor.onStartup(this.endpoints.collect({
+        case ep: Endpoint => ep
+      }))
 
     log.info(s"Starting Keg Server on port $port")
     server.start()
     val listeners = server.getListenerInfo().iterator()
     while listeners.hasNext do
       val listener = listeners.next()
+
       log.info(
-        s"Keg server listening on ${listener.getAddress().asInstanceOf[java.net.InetSocketAddress]}"
+        s"Keg server listening on ${Util.prettySocketAddr(listener.getProtcol(), listener.getAddress.asInstanceOf[java.net.InetSocketAddress])}"
       )
 
   def serverPort() =
@@ -412,45 +546,9 @@ object Server:
   // so we need to set this system property before anything else is loaded.
   System.setProperty("org.jboss.logging.provider", "slf4j")
 
-  private def decodeQueryString(qstring: String): Map[String, Seq[String]] =
+  def debugFromEnv = sys.env.isDefinedAt("KEG_DEBUG") || sys.env.isDefinedAt("DEBUG")
 
-    var limit = 1024 // params limit
-    var done = false
-    var i = 0
-    val params = scala.collection.mutable
-      .Map[String, scala.collection.mutable.ListBuffer[String]]()
-
-    var nameStart = 0
-    var valueStart = -1
-
-    def addParam(): Boolean =
-      if nameStart >= i then false
-      else
-        if valueStart <= nameStart then valueStart = i + 1
-        val name = java.net.URLDecoder
-          .decode(qstring.substring(nameStart, valueStart - 1), "UTF-8")
-        val value = java.net.URLDecoder
-          .decode(qstring.substring(valueStart - 1, i), "UTF-8")
-        val values = params.getOrElseUpdate(
-          name,
-          scala.collection.mutable.ListBuffer[String]()
-        )
-        values += value
-        true
-
-    while i < qstring.length && !done do
-      qstring.charAt(i) match
-        case '=' =>
-          if nameStart == i then nameStart = i + 1
-          else if valueStart < nameStart then valueStart = i + 1
-        case '&' =>
-          if addParam() then
-            limit -= 1
-            if limit <= 0 then done = true
-          nameStart = i + 1
-        case '#' => done = true
-        case _   => // continue
-      i += 1
-    addParam()
-
-    params.view.mapValues(_.toSeq).toMap
+  val defaultNotFoundEndpoint: Endpoint =
+    Endpoint(EndpointSelector.NotFound, req => EndpointResult.Failure.MethodAbort(404, "Not Found"), EndpointMeta())
+  val defaultMethodNotAllowedEndpoint: Endpoint =
+    Endpoint(EndpointSelector.MethodNotAllowed, req => EndpointResult.Failure.MethodAbort(405, "Method Not Allowed"), EndpointMeta())

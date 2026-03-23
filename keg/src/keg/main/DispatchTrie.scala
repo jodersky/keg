@@ -81,7 +81,7 @@ case class DispatchTrie[A](capturesSubpath: Boolean = false):
     DispatchLookup(curr.items.toMap, bindings.toMap, IndexedSeq.empty)
 
 object DispatchTrie:
-  case class DispatchLookup[A](
+  case class DispatchLookup[+A](
     items: collection.Map[String, A],
     bindings: Map[String, String],
     remainingPathSegments: IndexedSeq[String]

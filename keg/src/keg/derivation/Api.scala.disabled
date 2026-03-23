@@ -1,0 +1,193 @@
+package keg.derivation
+
+import keg.model.Data
+import keg.model.Request
+import keg.model.Response
+import keg.model.WsResponse
+import java.util.UUID
+
+enum Result[+A]:
+  case Continue(value: A)
+  case Respond(response: Response[Data])
+
+trait BaseApi:
+
+  /** Type class which defines how to extract a value of type A from a path
+    * segment. */
+  trait FromPath[+A]:
+    def fromPath(segment: String): Result[A]
+
+  /** Type class which defines how to extract a value of type A from an HTTP
+    * request.
+    *
+    * The implementation can either return a value of type A, or an early
+    * response. For example, you can use this to validate input or return a 400
+    * response, or perform authentication and redirect if the user is not logged
+    * in.
+    *
+    * Note that a `FromRequest` instance is invoked for every parameter of an
+    * `@route` annotated method, in the order of the parameters.
+    */
+  trait FromRequest[+A]:
+    def fromRequest(request: Request): Result[A]
+
+  /** Type class which defines how to convert a value of type A to an HTTP
+    * response.
+    */
+  trait ToResponse[-A]:
+    def toResponse(value: A): (Response[Data] | WsResponse)
+
+  given responseToResponse: ToResponse[Response[Data]] = response => response
+  given wsResponseToResponse: ToResponse[WsResponse] = response => response
+
+  given dataToResponse: ToResponse[keg.model.Data] with
+    def toResponse(value: keg.model.Data): Response[Data] =
+      Response(data = value, 200)
+
+  given dataToDataToResponse[A](using c: Conversion[A, keg.model.Data]): ToResponse[A] with
+    def toResponse(value: A): Response[Data] =
+      Response(data = c(value), 200)
+
+  given dataResponseToResponse[A](using c: Conversion[A, keg.model.Data]): ToResponse[Response[A]] with
+    def toResponse(value: Response[A]): Response[Data] =
+      value.copy(
+        data = c(value.data)
+      )
+
+  // NOTE: classes extending this trait MUST declare a (path: String) argument
+  // as first argument. This is necessary for the `route()` macro to work
+  // correctly.
+  trait EndpointAnnotation extends scala.annotation.Annotation:
+    def path: String
+    def methods: Seq[String]
+
+  trait WebsocketAnnotation extends EndpointAnnotation
+
+  trait NotFoundAnnotation extends EndpointAnnotation:
+    def path: String = ""
+    def methods: Seq[String] = Seq()
+  trait MethodNotAllowedAnnotation extends EndpointAnnotation:
+    def path: String = ""
+    def methods: Seq[String] = Seq()
+  trait CsrfErrorAnnotation extends EndpointAnnotation:
+    def path: String = ""
+    def methods: Seq[String] = Seq()
+
+trait Api extends BaseApi:
+
+  class request(val path: String, val methods: Seq[String]) extends EndpointAnnotation
+  class get(path: String) extends request(path, Seq("GET"))
+  class post(path: String) extends request(path, Seq("POST"))
+  class put(path: String) extends request(path, Seq("PUT"))
+  class delete(path: String) extends request(path, Seq("DELETE"))
+  class patch(path: String) extends request(path, Seq("PATCH"))
+
+  class websocket(val path: String) extends WebsocketAnnotation:
+    val methods: Seq[String] = Seq("GET")
+
+  class notFound() extends NotFoundAnnotation
+  class methodNotAllowed() extends MethodNotAllowedAnnotation
+  class csrfError() extends CsrfErrorAnnotation
+
+  def badRequest(message: String): Response[Data] =
+    Response("Bad Request " + message, 400)
+
+  given StringFromPath: FromPath[String] = segment => Result.Continue(segment)
+  given IntFromPath: FromPath[Int] = segment =>
+    try
+      Result.Continue(segment.toInt)
+    catch
+      case _: NumberFormatException =>
+        Result.Respond(badRequest("Invalid integer in path"))
+  given BooleanFromPath: FromPath[Boolean] = segment =>
+    segment.toLowerCase() match
+      case "true"  => Result.Continue(true)
+      case "false" => Result.Continue(false)
+      case _       => Result.Respond(badRequest("Invalid boolean in path"))
+  given LongFromPath: FromPath[Long] = segment =>
+    try
+      Result.Continue(segment.toLong)
+    catch
+      case _: NumberFormatException =>
+        Result.Respond(badRequest("Invalid long integer in path"))
+  given UUIDFromPath: FromPath[UUID] = segment =>
+    try
+      Result.Continue(UUID.fromString(segment))
+    catch
+      case _: IllegalArgumentException =>
+        Result.Respond(badRequest("Invalid UUID in path"))
+
+  given RequestFromRequest: FromRequest[Request] = req => Result.Continue(req)
+  given StringFromRequest: FromRequest[String] = req =>
+    try
+      val str = new String(req.body.readAllBytes(), "UTF-8")
+      Result.Continue(str)
+    catch
+      case e: Exception =>
+        Result.Respond(badRequest(s"Error reading request body: ${e.getMessage}"))
+
+  given JsonFromRequest[A](using upickle.default.Reader[A]): FromRequest[A] with
+    def fromRequest(request: Request): Result[A] =
+      try
+        // val str = new String(request.body.readAllBytes(), "UTF-8")
+        val obj = upickle.default.read[A](request.body)
+        Result.Continue(obj)
+      catch
+        // case e: upickle.core.AbortException =>
+        //   Result.Respond(badRequest(s"Invalid JSON: ${e}"))
+        case e: Exception =>
+          Result.Respond(badRequest(s"Invalid JSON: ${e}"))
+
+
+  // given toJsonResponse[A](using upickle.default.Writer[A]): ToResponse[A] with
+  //   def toResponse(value: A): Response =
+  //     val jsonData = new keg.model.Data:
+  //       override def writeTo(output: java.io.OutputStream): Unit =
+  //         upickle.default.stream(value).writeBytesTo(output)
+
+
+  //     val jsonStr = upickle.default.write(value)
+  //     Response(
+  //       data = jsonStr,
+  //       status = 200,
+  //       headers = Seq("Content-Type" -> "application/json")
+  //     )
+
+  given FormDataFromRequest: FromRequest[keg.forms.FormData] with
+    def fromRequest(request: Request): Result[keg.forms.FormData] =
+      try
+        val headers = request.headers.mapValues(_.last).toMap
+        val parts = keg.forms.FormParser.parse(request.getBody(), headers,
+          keg.forms.FormParser.FileDest.Null // TODO: make configurable
+        )
+        Result.Continue(keg.forms.FormData(parts))
+      catch
+        case e: keg.forms.FormParser.FormTooLargeException =>
+          Result.Respond(badRequest(s"Form data too large: ${e.getMessage}"))
+        case e: keg.forms.FormParser.InvalidFormEncodingException =>
+          Result.Respond(badRequest(s"Invalid form encoding: ${e.getMessage}"))
+        case e: keg.forms.FormParser.FormPartTooLargeException =>
+          Result.Respond(badRequest(s"Form part too large: ${e.getMessage}"))
+        case e: Exception =>
+          Result.Respond(badRequest(s"Error parsing form data: ${e.getMessage}"))
+
+  given FormResultFromRequest[A](using ff: keg.forms.FromForm[A]): FromRequest[keg.forms.FormResult[A]] with
+    def fromRequest(request: Request): Result[keg.forms.FormResult[A]] =
+      FormDataFromRequest.fromRequest(request) match
+        case Result.Respond(resp) => Result.Respond(resp)
+        case Result.Continue(formData) =>
+          Result.Continue(
+            ff.parse(formData)
+          )
+
+  given FormValueFromRequest[A](using ff: keg.forms.FromForm[A]): FromRequest[A] with
+    def fromRequest(request: Request): Result[A] =
+      FormDataFromRequest.fromRequest(request) match
+        case Result.Respond(resp) => Result.Respond(resp)
+        case Result.Continue(formData) =>
+          ff.parse(formData) match
+            case keg.forms.FormResult.Success(value, _) =>
+              Result.Continue(value)
+            case keg.forms.FormResult.Error(fieldErrors, globalErrors, _) =>
+              val errorMessages = (globalErrors ++ fieldErrors.flatMap { case (field, errs) => errs.map(err => s"$field: $err") }).mkString("; ")
+              Result.Respond(badRequest(s"Form validation error: $errorMessages"))

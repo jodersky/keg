@@ -19,9 +19,12 @@ object EndpointTest extends TestSuite:
         keg.Endpoint(
           selector = keg.EndpointSelector.Simple("/", Seq("GET")),
           invoke = (req: keg.Request) =>
-            keg.Response(
-              data = "Welcome to the root!",
-            )
+            keg.EndpointResult.Success(
+              keg.Response(
+                data = "Welcome to the root!",
+              )
+            ),
+          meta = keg.EndpointMeta()
         )
       )
 
@@ -37,13 +40,16 @@ object EndpointTest extends TestSuite:
           selector = keg.EndpointSelector.Simple("/echo", Seq("POST")),
           invoke = (req: keg.Request) =>
 
-            keg.Response(
-              data = new String(req.body.readAllBytes(), "UTF-8"),
-              headers = Seq(
-                "x-pong" -> req.headers.get("x-ping").map(_.last).getOrElse("no ping")
-              ),
-              status = req.headers.get("x-status").flatMap(_.lastOption).map(_.toInt).getOrElse(200)
-            )
+            keg.EndpointResult.Success(
+              keg.Response(
+                data = new String(req.body.readAllBytes(), "UTF-8"),
+                headers = Seq(
+                  "x-pong" -> req.headers.get("x-ping").getOrElse("no ping")
+                ),
+                status = req.headers.get("x-status").map(_.toInt).getOrElse(200)
+              )
+            ),
+          meta = keg.EndpointMeta()
         )
       )
 
@@ -76,13 +82,16 @@ object EndpointTest extends TestSuite:
         keg.Endpoint(
           selector = keg.EndpointSelector.Simple("/cookies", Seq("GET")),
           invoke = (req: keg.Request) =>
-            keg.Response(
-              data = "Cookies!",
-              cookies = Seq(
-                keg.Cookie("session_id", "abc123", path = "/"),
-                keg.Cookie("theme", "dark", path = "/")
+            keg.EndpointResult.Success(
+              keg.Response(
+                data = "Cookies!",
+                cookies = Seq(
+                  keg.Cookie("session_id", "abc123", path = "/"),
+                  keg.Cookie("theme", "dark", path = "/")
+                )
               )
-            )
+            ),
+          meta = keg.EndpointMeta()
         )
       )
 
@@ -100,19 +109,25 @@ object EndpointTest extends TestSuite:
         keg.Endpoint(
           selector = keg.EndpointSelector.Simple("/set-session", Seq("GET")),
           invoke = (req: keg.Request) =>
-            keg.Response(
-              data = "Session Set!",
-              session = Map("session_id" -> "xyz789")
-            )
+            keg.EndpointResult.Success(
+              keg.Response(
+                data = "Session Set!",
+                session = Map("session_id" -> "xyz789")
+              )
+            ),
+          meta = keg.EndpointMeta()
         ),
         keg.Endpoint(
           selector = keg.EndpointSelector.Simple("/get-session", Seq("GET")),
           invoke = (req: keg.Request) => {
             val sessionId = req.session.get("session_id").getOrElse("no-session")
-            keg.Response(
-              data = s"Session ID: $sessionId"
+            keg.EndpointResult.Success(
+              keg.Response(
+                data = s"Session ID: $sessionId"
+              )
             )
-          }
+          },
+          meta = keg.EndpointMeta()
         )
       )
 
@@ -139,29 +154,38 @@ object EndpointTest extends TestSuite:
         keg.Endpoint(
           selector = keg.EndpointSelector.Simple("/set-flash", Seq("GET")),
           invoke = (req: keg.Request) =>
-            keg.Response(
-              data = "Flash Set!",
-              flash = Map("info" -> "This is a flash message")
-            )
+            keg.EndpointResult.Success(
+              keg.Response(
+                data = "Flash Set!",
+                flash = Map("info" -> "This is a flash message")
+              )
+            ),
+          meta = keg.EndpointMeta()
         ),
         keg.Endpoint(
           selector = keg.EndpointSelector.Simple("/get-flash", Seq("GET")),
           invoke = (req: keg.Request) => {
             val flashMsg = req.flash.get("info").getOrElse("no-flash")
-            keg.Response(
-              data = s"Flash Message: $flashMsg"
+            keg.EndpointResult.Success(
+              keg.Response(
+                data = s"Flash Message: $flashMsg"
+              )
             )
-          }
+          },
+          meta = keg.EndpointMeta()
         ),
         keg.Endpoint(
           selector = keg.EndpointSelector.Simple("/redirect", Seq("GET")),
           invoke = (req: keg.Request) =>
-            keg.Response(
-              (),
-              status = 302,
-              headers = Seq("Location" -> "/get-flash"),
-              flash = null // preserve existing flash
-            )
+            keg.EndpointResult.Success(
+              keg.Response(
+                (),
+                status = 302,
+                headers = Seq("Location" -> "/get-flash"),
+                flash = null // preserve existing flash
+              )
+            ),
+          meta = keg.EndpointMeta()
         )
       )
 
@@ -201,10 +225,13 @@ object EndpointTest extends TestSuite:
         keg.Endpoint(
           selector = keg.EndpointSelector.NotFound,
           invoke = (req: keg.Request) =>
-            keg.Response(
-              data = "This is a custom 404 page",
-              status = 404
-            )
+            keg.EndpointResult.Success(
+              keg.Response(
+                data = "This is a custom 404 page",
+                status = 404
+              )
+            ),
+          meta = keg.EndpointMeta()
         )
       )
 
@@ -218,9 +245,12 @@ object EndpointTest extends TestSuite:
         keg.Endpoint(
           selector = keg.EndpointSelector.Simple("/hello", Seq("GET")),
           invoke = (req: keg.Request) =>
-            keg.Response(
-              "Hello, World!",
-            )
+            keg.EndpointResult.Success(
+              keg.Response(
+                "Hello, World!",
+              )
+            ),
+          meta = keg.EndpointMeta()
         )
       )
       withServer(endpoints): baseUrl =>
@@ -232,17 +262,23 @@ object EndpointTest extends TestSuite:
         keg.Endpoint(
           selector = keg.EndpointSelector.MethodNotAllowed,
           invoke = (req: keg.Request) =>
-            keg.Response(
-              data = "This method is not allowed here",
-              status = 405
-            )
+            keg.EndpointResult.Success(
+              keg.Response(
+                data = "This method is not allowed here",
+                status = 405
+              )
+            ),
+          meta = keg.EndpointMeta()
         ),
         keg.Endpoint(
           selector = keg.EndpointSelector.Simple("/hello", Seq("GET")),
           invoke = (req: keg.Request) =>
-            keg.Response(
-              "Hello, World!",
-            )
+            keg.EndpointResult.Success(
+              keg.Response(
+                "Hello, World!",
+              )
+            ),
+          meta = keg.EndpointMeta()
         )
       )
 
@@ -257,19 +293,25 @@ object EndpointTest extends TestSuite:
           selector = keg.EndpointSelector.Simple("/files/*", Seq("GET")),
           invoke = (req: keg.Request) => {
             val remainingPath = req.remainingPathSegments.mkString("/")
-            keg.Response(
-              data = s"Requested file path: $remainingPath"
+            keg.EndpointResult.Success(
+              keg.Response(
+                data = s"Requested file path: $remainingPath"
+              )
             )
-          }
+          },
+          meta = keg.EndpointMeta()
         ),
         keg.Endpoint(
           selector = keg.EndpointSelector.Simple("/foo/*", Seq("GET")),
           invoke = (req: keg.Request) => {
             val remainingPath = req.remainingPathSegments.mkString("/")
-            keg.Response(
-              data = s"Requested foo path: $remainingPath"
+            keg.EndpointResult.Success(
+              keg.Response(
+                data = s"Requested foo path: $remainingPath"
+              )
             )
-          }
+          },
+          meta = keg.EndpointMeta()
         )
       )
 
@@ -295,7 +337,10 @@ object EndpointTest extends TestSuite:
         keg.Endpoint(
           selector = keg.EndpointSelector.Simple("/static/*", Seq("GET")),
           invoke = (req: keg.Request) =>
-            keg.model.Static.staticResources("/foo", req.remainingPathSegments)
+            keg.EndpointResult.Success(
+              keg.model.Static.staticResources("/foo", req.remainingPathSegments)
+            ),
+          meta = keg.EndpointMeta()
         )
       )
 
@@ -336,7 +381,10 @@ object EndpointTest extends TestSuite:
           selector = keg.EndpointSelector.Simple("/static/*", Seq("GET")),
           invoke = (req: keg.Request) =>
             val root = sys.env("MILL_WORKSPACE_ROOT")
-            keg.model.Static.staticFiles(s"$root/keg/test/resources/foo", req.remainingPathSegments)
+            keg.EndpointResult.Success(
+              keg.model.Static.staticFiles(s"$root/keg/test/resources/foo", req.remainingPathSegments),
+            ),
+          meta = keg.EndpointMeta()
         )
       )
 

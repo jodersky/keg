@@ -11,6 +11,8 @@ import java.io.OutputStream
 import scala.annotation.switch
 import scala.concurrent.{ExecutionContext, Future, Promise}
 
+import keg.util.MultiDict
+
 object Util {
   def firstFutureOf[T](futures: Seq[Future[T]])(implicit ec: ExecutionContext) = {
     val p = Promise[T]
@@ -119,5 +121,131 @@ object Util {
     }
     output.mkString
   }
+
+  def decodeQueryString(qstring: String, maxParams: Int = 1024): MultiDict[String, String] =
+    import collection.mutable as m
+    import java.net.URLDecoder.decode as urlDecode
+
+    val params = m.Map[String, m.ListBuffer[String]]()
+
+    val l = qstring.length
+    var i = 0
+
+    var name: String = null
+    var value: String = null
+
+    def readName() =
+      var start = i
+      while i < l && qstring.charAt(i) != '=' && qstring.charAt(i) != '&' && qstring.charAt(i) != '#' do
+        i += 1
+      name = urlDecode(qstring.substring(start, i), "UTF-8")
+
+    def readValue() =
+      var start = i
+      while i < l && qstring.charAt(i) != '&' && qstring.charAt(i) != '#' do
+        i += 1
+      value = urlDecode(qstring.substring(start, i), "UTF-8")
+
+    var paramsRead = 0
+    while i < l && paramsRead < maxParams do
+      readName()
+      if i < l && qstring.charAt(i) == '=' then
+        i += 1
+        readValue()
+      else
+        value = ""
+      val values = params.getOrElseUpdate(name, m.ListBuffer[String]())
+      values += value
+      paramsRead += 1
+      if i < l && qstring.charAt(i) == '&' then
+        i += 1
+      else if i < l && qstring.charAt(i) == '#' then
+        i = l
+
+    MultiDict(params)
+
+  private def compactIpv6(addr: java.net.Inet6Address): String =
+    val bytes = addr.getAddress() // 16 bytes, big-endian
+    val hextets = Array.tabulate(8)(i => ((bytes(2 * i) & 0xff) << 8) | (bytes(2 * i + 1) & 0xff))
+
+    // Find the longest run of consecutive zero hextets, leftmost on tie
+    var bestStart = -1
+    var bestLen = 0
+    var i = 0
+    while i < 8 do
+      if hextets(i) == 0 then
+        var j = i
+        while j < 8 && hextets(j) == 0 do j += 1
+        val len = j - i
+        if len > bestLen then
+          bestLen = len
+          bestStart = i
+        i = j
+      else
+        i += 1
+
+    if bestLen == 0 then
+      hextets.map(_.toHexString).mkString(":")
+    else
+      val before = hextets.slice(0, bestStart).map(_.toHexString).mkString(":")
+      val after  = hextets.slice(bestStart + bestLen, 8).map(_.toHexString).mkString(":")
+      s"$before::$after"
+
+  def prettySocketAddr(
+    scheme: String,
+    addr: java.net.InetSocketAddress
+  ): String =
+    addr.getAddress() match
+      case ipv4: java.net.Inet4Address => s"$scheme://${ipv4.getHostAddress}:${addr.getPort}"
+      case ipv6: java.net.Inet6Address => s"$scheme://[${compactIpv6(ipv6)}]:${addr.getPort}"
+      case other => s"$scheme://${other.getHostAddress}:${addr.getPort}"
+
+  def mkSslContext(
+    keyPem: String,
+    certPem: String
+  ): javax.net.ssl.SSLContext =
+    import java.io.ByteArrayInputStream
+    import java.security.{KeyFactory, KeyStore}
+    import java.security.cert.CertificateFactory
+    import java.security.spec.{InvalidKeySpecException, PKCS8EncodedKeySpec}
+    import javax.net.ssl.{KeyManagerFactory, SSLContext}
+    import java.util.Base64
+
+    val keyPemClean = keyPem
+      .replace("-----BEGIN PRIVATE KEY-----", "")
+      .replace("-----END PRIVATE KEY-----", "")
+      .replaceAll("\\s+", "")
+    val keyBytes = Base64.getDecoder.decode(keyPemClean)
+    val keySpec = new PKCS8EncodedKeySpec(keyBytes)
+
+    val privateKey =
+      try KeyFactory.getInstance("RSA").generatePrivate(keySpec)
+      catch
+        case _: InvalidKeySpecException =>
+          try KeyFactory.getInstance("EC").generatePrivate(keySpec)
+          catch
+            case _: InvalidKeySpecException =>
+              try KeyFactory.getInstance("Ed25519").generatePrivate(keySpec)
+              catch
+                case _: InvalidKeySpecException =>
+                  throw IllegalArgumentException(
+                    "Unsupported PKCS#8 key type: only RSA, EC, and Ed25519 are supported"
+                  )
+
+    val certFactory = CertificateFactory.getInstance("X.509")
+    val cert = certFactory.generateCertificate(
+      new ByteArrayInputStream(certPem.getBytes("UTF-8"))
+    )
+
+    val keyStore = KeyStore.getInstance("PKCS12") // PKCS12 is the modern standard, it supersedes the older JKS format
+    keyStore.load(null, null)
+    keyStore.setKeyEntry("key", privateKey, Array.empty[Char], Array(cert))
+
+    val kmf = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm)
+    kmf.init(keyStore, Array.empty[Char])
+
+    val sslContext = SSLContext.getInstance("TLS")
+    sslContext.init(kmf.getKeyManagers, null, null)
+    sslContext
 
 }

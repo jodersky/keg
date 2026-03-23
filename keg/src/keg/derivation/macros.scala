@@ -3,6 +3,8 @@ package keg.derivation
 import scala.quoted.Expr
 import scala.quoted.Type
 import scala.quoted.Quotes
+import keg.model.WebResponse
+import keg.model.EndpointResult
 
 def routesImpl()(using q: Quotes) =
   import q.reflect.*
@@ -92,7 +94,7 @@ def endpointImpl(using qctx: Quotes)(
 
   val toResponse = Implicits.search(toResponseTpe) match
     case success: ImplicitSearchSuccess =>
-      success.tree.asExprOf[keg.derivation.BaseApi#ToResponse[?]]
+      success.tree//.asExprOf[keg.derivation.BaseApi#ToResponse[?]]
     case failure: ImplicitSearchFailure =>
       report.errorAndAbort(
         s"No given instance of ToResponse[${mt.show}] found for method '${method.name}'",
@@ -102,6 +104,7 @@ def endpointImpl(using qctx: Quotes)(
   def paramChecks(
     owner: Symbol,
     prefix: Ref,
+    ctx: Ref,
     valss: List[List[Symbol]],
     req: Expr[keg.model.Request]
   ) =
@@ -121,12 +124,24 @@ def endpointImpl(using qctx: Quotes)(
                 case success: ImplicitSearchSuccess =>
                   '{
                     val str = $req.pathParams(${Expr(param.name)})
-                    val fp = ${success.tree.asExprOf[keg.derivation.BaseApi#FromPath[t]]}
-                    fp.fromPath(str) match
+                    // val fp = ${success.tree.asExprOf[keg.derivation.BaseApi#FromPath[t]]}
+
+                    ${
+                      // this is equivalent to `fp.fromPath(str, ctx)`, but we have to jump through some hoops to convince the compiler that the types line up here
+                      Apply(
+                        Select.unique(success.tree, "fromPath"),
+                        List(
+                          'str.asTerm,
+                          ctx
+                        )
+                      ).asExprOf[Result[t]]
+                    } match
                       case Result.Continue(value) =>
                         ${Assign(Ref(v), 'value.asTerm).asExpr}
+                      case Result.Abort(code, message) =>
+                        ${Return('{EndpointResult.Failure.ParamAbort(${Expr(param.name)}, code, message)}.asTerm, owner).asExpr}
                       case Result.Respond(response) =>
-                        ${Return('response.asTerm, owner).asExpr}
+                        ${Return('{EndpointResult.Success(response)}.asTerm, owner).asExpr}
                   }.asTerm
 
                 case failure: ImplicitSearchFailure =>
@@ -143,12 +158,23 @@ def endpointImpl(using qctx: Quotes)(
               Implicits.search(fromRequestType) match
                 case success: ImplicitSearchSuccess =>
                   '{
-                    val fr = ${success.tree.asExprOf[keg.derivation.BaseApi#FromRequest[t]]}
-                    fr.fromRequest($req) match
+                    // val fr = ${success.tree.asExprOf[keg.derivation.BaseApi#FromRequest[t]]}
+                    ${
+                      // this is equivalent to `fr.fromRequest(req, ctx)`, but we have to jump through some hoops to convince the compiler that the types line up here
+                      Apply(
+                        Select.unique(success.tree, "fromRequest"),
+                        List(
+                          req.asTerm,
+                          ctx
+                        )
+                      ).asExprOf[Result[t]]
+                    } match
                       case Result.Continue(value) =>
                         ${Assign(Ref(v), 'value.asTerm).asExpr}
+                      case Result.Abort(code, message) =>
+                        ${Return('{EndpointResult.Failure.ParamAbort(${Expr(param.name)}, code, message)}.asTerm, owner).asExpr}
                       case Result.Respond(response) =>
-                        ${Return('response.asTerm, owner).asExpr}
+                        ${Return('{EndpointResult.Success(response)}.asTerm, owner).asExpr}
                   }.asTerm
                 case failure: ImplicitSearchFailure =>
                   report.errorAndAbort(
@@ -162,9 +188,25 @@ def endpointImpl(using qctx: Quotes)(
       List("request")
     )(
       _ => List(TypeRepr.of[keg.model.Request]),
-      _ => TypeRepr.of[keg.model.Response | keg.model.WsResponse]
+      _ => TypeRepr.of[keg.model.EndpointResult]
     ), {
       case (sym, List(req)) =>
+
+        val ctxSym = Symbol.newVal(
+          parent = sym,
+          name = "ctx",
+          tpe = TypeSelect(
+            prefix,
+            "Context"
+          ).tpe,
+          flags = Flags.EmptyFlags,
+          privateWithin = Symbol.noSymbol
+        )
+
+        val ctxDef = ValDef(ctxSym, Some('{
+          ${prefix.asExprOf[keg.derivation.BaseApi]}.parseContext(${req.asExprOf[keg.model.Request]})
+        }.asTerm))
+
         val valSymss = for paramss <- method.paramSymss yield
           for param <- paramss yield
             Symbol.newVal(
@@ -194,41 +236,77 @@ def endpointImpl(using qctx: Quotes)(
           for v <- vals yield Ref(v)
         val application = argss.foldLeft(base)((lhs, args) => Apply(lhs, args))
 
-        val conversion = '{
-          ${toResponse}.asInstanceOf[BaseApi#ToResponse[Any]].toResponse(${application.asExpr})
-        }.asTerm
-
-        Block(
-          valDefss.flatten ++ paramChecks(sym, prefix, valSymss, req.asExprOf[keg.model.Request]).flatten,
-          conversion
+        val conversion = Apply(
+          Select.unique(toResponse, "toResponse"),
+          List(
+            application,
+            Ref(ctxSym)
+          )
         )
+
+        // val conversion = '{
+        //   // TODO: this cast is a bit sad, but I don't see a way to convince the compiler that the types line up here
+        //   EndpointResult.Success(
+        //     ${toResponse}.asInstanceOf[BaseApi#ToResponse[Any]].toResponse(${application.asExpr}, ${Ref(ctxSym).asExpr}.asInstanceOf[Nothing])
+        //   )
+        // }.asTerm
+
+        val block = Block(
+          List(ctxDef) ++ valDefss.flatten ++ paramChecks(sym, prefix, Ref(ctxSym), valSymss, req.asExprOf[keg.model.Request]).flatten,
+          '{
+            EndpointResult.Success(${conversion.asExprOf[keg.model.WebResponse]})
+          }.asTerm
+        )
+
+        val bindSym = Symbol.newBind(sym, "e", Flags.EmptyFlags, TypeRepr.of[Exception])
+
+        Try(
+          block,
+          List(
+            CaseDef(
+              Bind(
+                bindSym,
+                Wildcard()
+              ),
+              None,
+              '{ EndpointResult.Failure.Exception(${Ref(bindSym).asExprOf[Exception]}) }.asTerm
+            )
+          ),
+          None
+        )
+
+        // '{
+        //   try
+        //     ${block.asExprOf[keg.model.EndpointResult]}
+        //   catch
+        //     case e: Exception =>
+        //       EndpointResult.Failure.Exception(e)
+        // }.asTerm
       case _ => ???
     }
-  ).asExprOf[keg.model.Request => (keg.model.Response | keg.model.WsResponse)]
+  ).asExprOf[keg.model.Request => keg.model.EndpointResult]
 
-  val selector = if annot.tpe <:< TypeRepr.of[keg.derivation.BaseApi#WebsocketAnnotation] then
+  val selector = if annot.tpe <:< TypeRepr.of[keg.derivation.BaseApi#websocket] then
     '{
       keg.model.EndpointSelector.WebSocketUpgrade(${Expr(path)})
     }
-  else if annot.tpe <:< TypeRepr.of[keg.derivation.BaseApi#NotFoundAnnotation] then
-    '{
-      keg.model.EndpointSelector.NotFound
-    }
-  else if annot.tpe <:< TypeRepr.of[keg.derivation.BaseApi#MethodNotAllowedAnnotation] then
-    '{
-      keg.model.EndpointSelector.MethodNotAllowed
-    }
-  else if annot.tpe <:< TypeRepr.of[keg.derivation.BaseApi#CsrfErrorAnnotation] then
-    '{
-      keg.model.EndpointSelector.CsrfError
-    }
-  else
+  else if annot.tpe <:< TypeRepr.of[keg.derivation.BaseApi#request] then
     '{
       keg.model.EndpointSelector.Simple(
         path = ${Expr(path)},
-        methods = ${annot.asExprOf[keg.derivation.Api#EndpointAnnotation]}.methods
+        methods = ${annot.asExprOf[keg.derivation.BaseApi#request]}.methods
       )
     }
+  else if annot.tpe <:< TypeRepr.of[keg.derivation.BaseApi#notFound] then
+    '{
+      keg.model.EndpointSelector.NotFound
+    }
+  else if annot.tpe <:< TypeRepr.of[keg.derivation.BaseApi#methodNotAllowed] then
+    '{
+      keg.model.EndpointSelector.MethodNotAllowed
+    }
+  else
+    report.errorAndAbort(s"Unsupported endpoint annotation: ${annot.show}", annot.pos)
 
   '{
     keg.model.Endpoint(

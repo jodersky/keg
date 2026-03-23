@@ -26,3 +26,14 @@ object Secret:
     val random = new java.security.SecureRandom()
     random.nextBytes(bytes)
     Secret(bytes)
+
+  def fromTmp(): Secret =
+    val tmpDir = System.getProperty("java.io.tmpdir")
+    val path = java.nio.file.Paths.get(tmpDir, "keg-secret")
+    if java.nio.file.Files.exists(path) then
+      val s = java.nio.file.Files.readString(path)
+      Secret(s)
+    else
+      val secret = Secret.random()
+      java.nio.file.Files.writeString(path, secret.toBase64)
+      secret

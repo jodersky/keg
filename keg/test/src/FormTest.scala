@@ -5,7 +5,8 @@ object FormTest extends TestSuite:
   def withServer(endpoints: Seq[keg.Endpoint])(fn: String => Unit): Unit =
     val server = keg.Server(
       endpoints = endpoints,
-      port = 0
+      port = 0,
+      debugMode = true
     )
     server.start()
     try
@@ -17,13 +18,9 @@ object FormTest extends TestSuite:
     test("basic form derivation"):
       object app:
         @keg.post("/submit")
-        def submitForm(form: keg.forms.FormData): keg.Response =
-          val name = form.parts.collect:
-            case keg.forms.FormPart.Field("name", value) => value
-          .head
-          val value = form.parts.collect:
-            case keg.forms.FormPart.Field("value", value) => value
-          .head
+        def submitForm(form: keg.forms.FormData): keg.Response[keg.Data] =
+          val name = form.fields("name")
+          val value = form.fields("value")
           keg.Response(s"Hello, $name! Value is: $value")
 
         val routes = keg.routes()

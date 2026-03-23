@@ -1,6 +1,12 @@
 package keg.main
 
-object Reloader:
+import keg.model.Endpoint
+
+import keg.model.Request
+
+import keg.model.WebResponse
+
+object Reloader extends Interceptor:
 
   val instance = java.util.UUID.randomUUID().toString
 
@@ -13,11 +19,11 @@ object Reloader:
       val client = it.next()
       client.send(message)
 
-  val endpoints = Seq(
+  override val endpoints = Seq(
     keg.model.Endpoint(
       selector = keg.model.EndpointSelector.WebSocketUpgrade("/__dev_ws"),
       invoke = (request: keg.model.Request) =>
-        keg.model.WsResponse(
+        val r = keg.model.WsResponse(
           channel =>
             channel.send(
               keg.model.Ws.Text(
@@ -33,17 +39,24 @@ object Reloader:
                 clients.remove(channel)
               case _ => ()
         )
+        keg.model.EndpointResult.Success(r)
     ),
     keg.model.Endpoint(
       selector = keg.model.EndpointSelector.Simple("/__dev_ws.js", Seq("GET")),
       invoke = (request: keg.model.Request) =>
-        keg.model.Static.staticResource("/reload.js")
+        keg.model.EndpointResult.Success(keg.model.Static.staticResource("/reload.js"))
     )
   )
 
   // val script = new String(this.getClass().getResourceAsStream("/reload.js").readAllBytes(), "UTF-8")
 
-  def inject(response: keg.model.Response): keg.model.Response =
+  def intercept(request: Request, endpoint: Endpoint, next: Request => WebResponse): WebResponse =
+    val response = next(request)
+    response match
+      case r: keg.model.Response[keg.model.Data] => inject(r)
+      case other => other
+
+  def inject(response: keg.model.Response[keg.model.Data]): keg.model.Response[keg.model.Data] =
     val allHeaders = (response.data.headers ++ response.headers).map(elem => elem._1.toLowerCase -> elem._2).toMap
     allHeaders.get("content-type") match
       case Some(html) if html.startsWith("text/html") =>

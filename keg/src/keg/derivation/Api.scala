@@ -3,71 +3,142 @@ package keg.derivation
 import keg.model.Request
 import keg.model.Response
 import keg.model.WsResponse
-import java.util.UUID
+import keg.model.WebResponse
+import keg.model.Data
+import java.io.InputStream
 
+
+// case class HttpException(code: Int, message: String) extends Exception(message)
+
+
+// @api.error(404)
+// def handleError
+
+// @api.aborted()
+// def handleAbort(code: Int, message: String) = ???
+
+// @api.error()
+// def foo(ex: Exception) = ???
+
+// enum EpRes:
+//   case Success(response: WebResponse)
+
+//   // invoking the endpoint produced an exception, which should be handled
+//   case Exception(ex: Throwable)
+
+//   case InvalidArguments(errors: Seq[InvalidArgumentError])
+
+// case class InvalidArgumentError(param: String, message: String)
+
+
+
+// enum Ep:
+//   /** An endpoint representing a simple HTTP route, selected by its path and methods. */
+//   case Simple(path: String, methods: Seq[String], invoke: (Request) => WebResponse)
+
+//   /** An endpoint representing an upgrade to a WebSocket connection. */
+//   case Websocket(path: String, invoke: (Request) => WebResponse)
+
+//   /** An endpoint representing an error handler for a specific HTTP status code. */
+//   case Aborted(invoke: (Request, Int, String) => WebResponse)
+
+//   /** Endpoint called if no other endpoint matches the request. */
+//   case NotFound(invoke: Request => WebResponse)
+
+//   /** Endpoint called if the request method is not allowed. */
+//   case MethodNotAllowed(invoke: Request => WebResponse)
+
+//   /** Endpoint called if an error occurs while processing the request. */
+//   case Error(handler: (Request, Exception) => WebResponse)
+
+/** */
 enum Result[+A]:
+
+  /** Continue processing the request, returning a value of type `A`. */
   case Continue(value: A)
-  case Respond(response: Response)
+
+  /** The parameter could not be read for some reason. */
+  case Abort(code: Int, message: String)
+
+  /** Respond immediately with the given response. */
+  case Respond(response: WebResponse)
 
 trait BaseApi:
 
-  /** Type class which defines how to extract a value of type A from a path
-    * segment. */
-  trait FromPath[+A]:
-    def fromPath(segment: String): Result[A]
+  /** A type representing a "shared" context between all `FromRequest`s.
+    * Essentially, this type will be instantiated once per request, and will
+    * then be passed to any `FromRequest` instances.
+    *
+    * The context type is intended to be used to store data accessed by all
+    * endpoints, specifically data which is expensive to compute and likely
+    * accessed by many `FromRequest`s per endpoint. Example: user authentication
+    * information.
+    *
+    * On a logical level, the context type sits between interceptors and
+    * individual `FromRequest`.
+    */
+  type Context
 
-  /** Type class which defines how to extract a value of type A from an HTTP
-    * request.
+  /** Create a context from a request.
+    *
+    * This method is called by the endpoint macro, and is intended to be
+    * implemented by the user.
+    */
+  def parseContext(request: Request): Context
+
+  /** Type class for extracting values from a path segment. */
+  trait FromPath[+A]:
+    def fromPath(path: String, ctx: Context): Result[A]
+
+  /** Type class for extracting values from a request.
     *
     * The implementation can either return a value of type A, or an early
     * response. For example, you can use this to validate input or return a 400
     * response, or perform authentication and redirect if the user is not logged
     * in.
     *
-    * Note that a `FromRequest` instance is invoked for every parameter of an
-    * `@route` annotated method, in the order of the parameters.
+    * A `FromRequest` instance is invoked for every parameter of an `@route`
+    * annotated method, in the order of the parameters. The `Context` returned
+    * by `parseContext` is passed to each `FromRequest`, so it can be used to
+    * share data between `FromRequest`s without needing to re-parse the same
+    * data multiple times.
+    *
+    * Note that a `FromRequest` can extract a value from the request's metadata
+    * (e.g., headers, query parameters, path, cookies, uri, etc.) or from the
+    * request's body. Since the body is a stream, it only makes sense to have
+    * one `FromRequest` which extracts data from the body, however there is
+    * currently no way to enforce this statically at compile time.
     */
   trait FromRequest[+A]:
-    def fromRequest(request: Request): Result[A]
 
-  /** Type class which defines how to convert a value of type A to an HTTP
-    * response.
-    */
+    /** Extract a value of type `A` from the request.
+      *
+      * Note: generic FromRequests (such as those found in code keg code),
+      * should never return a `Respond` result, since that would not allow end
+      * users to customize the rendering of error responses. Instead, they
+      * should return an `Abort`. `Respond` is only intended to be used in user
+      * code.
+      */
+    def fromRequest(req: Request, ctx: Context): Result[A]
+
+  /** Type class for converting values to a response. */
   trait ToResponse[-A]:
-    def toResponse(value: A): (Response | WsResponse)
+    def toResponse(value: A, ctx: Context): keg.model.WebResponse
 
-  given responseToResponse: ToResponse[Response] = response => response
-  given wsResponseToResponse: ToResponse[WsResponse] = response => response
+  trait EndpointAnnotation extends scala.annotation.StaticAnnotation
 
-  given dataToResponse: ToResponse[keg.model.Data] with
-    def toResponse(value: keg.model.Data): Response =
-      Response(data = value, 200)
-
-  given dataToDataToResponse[A](using c: Conversion[A, keg.model.Data]): ToResponse[A] with
-    def toResponse(value: A): Response =
-      Response(data = c(value), 200)
-
-  // NOTE: classes extending this trait MUST declare a (path: String) argument
-  // as first argument. This is necessary for the `route()` macro to work
-  // correctly.
-  trait EndpointAnnotation extends scala.annotation.Annotation:
-    def path: String
-    def methods: Seq[String]
-
-  trait WebsocketAnnotation extends EndpointAnnotation
-
-  trait NotFoundAnnotation extends EndpointAnnotation:
-    def path: String = ""
-    def methods: Seq[String] = Seq()
-  trait MethodNotAllowedAnnotation extends EndpointAnnotation:
-    def path: String = ""
-    def methods: Seq[String] = Seq()
-  trait CsrfErrorAnnotation extends EndpointAnnotation:
-    def path: String = ""
-    def methods: Seq[String] = Seq()
-
-trait Api extends BaseApi:
-
+  /** An annotation for marking endpoint methods.
+    *
+    * Each method annotated with this will be turned into a "simple" endpoint by
+    * the `route()` macro, using path and methods as selector. The macro will
+    * generate code to extract the parameters of the method using `FromRequest`
+    * instances, and to convert the return value of the method to a response
+    * using a `ToResponse` instance.
+    *
+    * Note that a concrete class extending this trait MUST declare a `path:
+    * String` argument as the first argument. This is necessary for the
+    * `route()` macro to work correctly.
+    */
   class request(val path: String, val methods: Seq[String]) extends EndpointAnnotation
   class get(path: String) extends request(path, Seq("GET"))
   class post(path: String) extends request(path, Seq("POST"))
@@ -75,100 +146,230 @@ trait Api extends BaseApi:
   class delete(path: String) extends request(path, Seq("DELETE"))
   class patch(path: String) extends request(path, Seq("PATCH"))
 
-  class websocket(val path: String) extends WebsocketAnnotation:
-    val methods: Seq[String] = Seq("GET")
+  /** An annotation for marking websocket endpoint methods. This is the same as
+    * `EndpointAnnotation`, but will generate an endpoint using the "websocket"
+    * selector, which means the endpoint will only be invoked for websocket
+    * upgrade requests.
+    */
+  class websocket(path: String) extends EndpointAnnotation
 
-  class notFound() extends NotFoundAnnotation
-  class methodNotAllowed() extends MethodNotAllowedAnnotation
-  class csrfError() extends CsrfErrorAnnotation
+  class notFound() extends EndpointAnnotation
+  class methodNotAllowed() extends EndpointAnnotation
 
-  def badRequest(message: String): Response =
-    Response("Bad Request " + message, 400)
+  class error() extends scala.annotation.StaticAnnotation
 
-  given StringFromPath: FromPath[String] = segment => Result.Continue(segment)
-  given IntFromPath: FromPath[Int] = segment =>
-    try
-      Result.Continue(segment.toInt)
-    catch
-      case _: NumberFormatException =>
-        Result.Respond(badRequest("Invalid integer in path"))
-  given BooleanFromPath: FromPath[Boolean] = segment =>
-    segment.toLowerCase() match
-      case "true"  => Result.Continue(true)
-      case "false" => Result.Continue(false)
-      case _       => Result.Respond(badRequest("Invalid boolean in path"))
-  given LongFromPath: FromPath[Long] = segment =>
-    try
-      Result.Continue(segment.toLong)
-    catch
-      case _: NumberFormatException =>
-        Result.Respond(badRequest("Invalid long integer in path"))
-  given UUIDFromPath: FromPath[UUID] = segment =>
-    try
-      Result.Continue(UUID.fromString(segment))
-    catch
-      case _: IllegalArgumentException =>
-        Result.Respond(badRequest("Invalid UUID in path"))
+trait StandardFroms extends BaseApi:
 
-  given RequestFromRequest: FromRequest[Request] = req => Result.Continue(req)
-  given StringFromRequest: FromRequest[String] = req =>
-    try
-      val str = new String(req.body.readAllBytes(), "UTF-8")
-      Result.Continue(str)
-    catch
-      case e: Exception =>
-        Result.Respond(badRequest(s"Error reading request body: ${e.getMessage}"))
+  given StringFromPath: FromPath[String] with
+    def fromPath(path: String, ctx: Context): Result[String] = Result.Continue(path)
 
-  given JsonFromRequest[A](using upickle.default.Reader[A]): FromRequest[A] with
-    def fromRequest(request: Request): Result[A] =
+  given ByteFromPath: FromPath[Byte] with
+    def fromPath(path: String, ctx: Context): Result[Byte] =
+      try Result.Continue(path.toByte)
+      catch case _: NumberFormatException => Result.Abort(400, "Invalid byte in path")
+
+  given ShortFromPath: FromPath[Short] with
+    def fromPath(path: String, ctx: Context): Result[Short] =
+      try Result.Continue(path.toShort)
+      catch case _: NumberFormatException => Result.Abort(400, "Invalid short integer in path")
+
+  given IntFromPath: FromPath[Int] with
+    def fromPath(path: String, ctx: Context): Result[Int] =
+      try Result.Continue(path.toInt)
+      catch case _: NumberFormatException => Result.Abort(400, "Invalid integer in path")
+
+  given LongFromPath: FromPath[Long] with
+    def fromPath(path: String, ctx: Context): Result[Long] =
+      try Result.Continue(path.toLong)
+      catch case _: NumberFormatException => Result.Abort(400, "Invalid long integer in path")
+
+  given FloatFromPath: FromPath[Float] with
+    def fromPath(path: String, ctx: Context): Result[Float] =
+      try Result.Continue(path.toFloat)
+      catch case _: NumberFormatException => Result.Abort(400, "Invalid float in path")
+
+  given DoubleFromPath: FromPath[Double] with
+    def fromPath(path: String, ctx: Context): Result[Double] =
+      try Result.Continue(path.toDouble)
+      catch case _: NumberFormatException => Result.Abort(400, "Invalid double in path")
+
+  given BooleanFromPath: FromPath[Boolean] with
+    def fromPath(path: String, ctx: Context): Result[Boolean] =
+      path.toLowerCase() match
+        case "true"  => Result.Continue(true)
+        case "false" => Result.Continue(false)
+        case _       => Result.Abort(400, "Invalid boolean in path")
+
+  given UUIDFromPath: FromPath[java.util.UUID] with
+    def fromPath(path: String, ctx: Context): Result[java.util.UUID] =
+      try Result.Continue(java.util.UUID.fromString(path))
+      catch case _: IllegalArgumentException => Result.Abort(400, "Invalid UUID in path")
+
+  given RequestFromRequest: FromRequest[Request] with
+    def fromRequest(req: Request, ctx: Context): Result[Request] = Result.Continue(req)
+
+  given ContextFromRequest: FromRequest[Context] with
+    def fromRequest(req: Request, ctx: Context): Result[Context] = Result.Continue(ctx)
+
+  given FormFromRequest: FromRequest[keg.forms.FormData] with
+    def fromRequest(req: Request, ctx: Context): Result[keg.forms.FormData] =
+      val visitor = new keg.forms.FormDataVisitor()
+
+      keg.forms.FormParser.tryParse(
+        req.getBody(),
+        "application/x-www-form-urlencoded", // TODO: get actual content type from request header
+        visitor,
+        maxSize = 30*1024, // 30 KB
+        maxFileSize = 100*1024*1024 // 100 MB
+      ) match
+        case Left(_: keg.forms.FormParser.FormTooLargeException) =>
+          Result.Abort(413, "Form part is too large")
+        case Left(_: keg.forms.FormParser.InvalidFormEncodingException) =>
+          Result.Abort(400, "Form data is malformed")
+        case Right(data)    =>
+          Result.Continue(data)
+
+  given StringFromRequest: FromRequest[String] with
+    def fromRequest(req: Request, ctx: Context): Result[String] =
       try
-        // val str = new String(request.body.readAllBytes(), "UTF-8")
-        val obj = upickle.default.read[A](request.body)
+        val bytes = req.getBody().readAllBytes()
+        Result.Continue(new String(bytes, java.nio.charset.StandardCharsets.UTF_8))
+      catch case _: Exception => Result.Abort(400, "Request body is not valid UTF-8")
+
+  given ByteArrayFromRequest: FromRequest[Array[Byte]] with
+    def fromRequest(req: Request, ctx: Context): Result[Array[Byte]] =
+      try Result.Continue(req.getBody().readAllBytes())
+      catch case _: Exception => Result.Abort(400, "Invalid request body")
+
+  given ReadableFromRequest: FromRequest[geny.Readable] with
+    def fromRequest(req: Request, ctx: Context): Result[geny.Readable] =
+      val readable = new geny.Readable:
+        def readBytesThrough[T](f: InputStream => T): T = f(req.getBody())
+      Result.Continue(readable)
+
+  given InputStreamFromRequest: FromRequest[InputStream] with
+    def fromRequest(req: Request, ctx: Context): Result[InputStream] =
+      try Result.Continue(req.getBody())
+      catch case _: Exception => Result.Abort(400, "Invalid request body")
+
+  given dataToResponse: ToResponse[Data] with
+    def toResponse(data: Data, ctx: Context): Response[Data] = Response(data)
+
+  given dataToDataToResponse[A](using c: Conversion[A, Data]): ToResponse[A] with
+    def toResponse(data: A, ctx: Context): Response[Data] = Response(c(data))
+
+  given dataResponseToResponse[A](using c: Conversion[A, Data]): ToResponse[Response[A]] with
+    def toResponse(response: Response[A], ctx: Context): Response[Data] =
+      response.copy(data = c(response.data))
+
+  given responseToResponse: ToResponse[Response[Data]] with
+    def toResponse(response: Response[Data], ctx: Context): WebResponse = response
+
+  given wsToResponse: ToResponse[WsResponse] with
+    def toResponse(ws: WsResponse, ctx: Context) = ws
+
+trait ExtraFroms extends StandardFroms:
+
+
+  given jsonFromRequest[A](using upickle.default.CaseClassReader[A]): FromRequest[A] with
+    def fromRequest(req: Request, ctx: Context): Result[A] =
+      try
+        val obj = upickle.default.read[A](req.body)
         Result.Continue(obj)
       catch
-        // case e: upickle.core.AbortException =>
-        //   Result.Respond(badRequest(s"Invalid JSON: ${e}"))
+        case e: upickle.core.AbortException =>
+          Result.Abort(400, s"Invalid JSON: ${e.getMessage}")
         case e: Exception =>
-          Result.Respond(badRequest(s"Invalid JSON: ${e}"))
+          Result.Abort(400, s"Error reading request body: ${e.getMessage}")
 
+  given jsonToResponse[A](using upickle.default.CaseClassWriter[A]): ToResponse[A] with
+    def toResponse(value: A, ctx: Context): Response[Data] =
+      val jsonData = new Data:
+        override def write(output: java.io.OutputStream): Unit =
+          upickle.default.stream(value).writeBytesTo(output)
 
-  // given toJsonResponse[A](using upickle.default.Writer[A]): ToResponse[A] with
-  //   def toResponse(value: A): Response =
-  //     val jsonData = new keg.model.Data:
-  //       override def writeTo(output: java.io.OutputStream): Unit =
-  //         upickle.default.stream(value).writeBytesTo(output)
-
-
-  //     val jsonStr = upickle.default.write(value)
-  //     Response(
-  //       data = jsonStr,
-  //       status = 200,
-  //       headers = Seq("Content-Type" -> "application/json")
-  //     )
-
-  given UtilFormDataFromRequest: FromRequest[keg.forms.FormData] with
-    def fromRequest(request: Request): Result[keg.forms.FormData] =
-      try
-        val headers = request.headers.mapValues(_.last).toMap
-        val parts = keg.forms.FormParser.parse(request.getBody(), headers,
-          keg.forms.FormParser.FileDest.Null // TODO: make configurable
+        override def headers: Seq[(String, String)] = Seq(
+          "Content-Type" -> "application/json; charset=UTF-8"
         )
-        Result.Continue(keg.forms.FormData(parts))
-      catch
-        case e: keg.forms.FormParser.FormTooLargeException =>
-          Result.Respond(badRequest(s"Form data too large: ${e.getMessage}"))
-        case e: keg.forms.FormParser.InvalidFormEncodingException =>
-          Result.Respond(badRequest(s"Invalid form encoding: ${e.getMessage}"))
-        case e: keg.forms.FormParser.FormPartTooLargeException =>
-          Result.Respond(badRequest(s"Form part too large: ${e.getMessage}"))
-        case e: Exception =>
-          Result.Respond(badRequest(s"Error parsing form data: ${e.getMessage}"))
+      Response(jsonData)
 
-  given FormFromRequest[A](using ff: keg.forms.FromForm[A]): FromRequest[keg.forms.Form[A]] with
-    def fromRequest(request: Request): Result[keg.forms.Form[A]] =
-      UtilFormDataFromRequest.fromRequest(request) match
-        case Result.Respond(resp) => Result.Respond(resp)
-        case Result.Continue(formData) =>
-          Result.Continue(
-            ff.parse(formData)
-          )
+trait Api extends ExtraFroms:
+  type Context = Unit
+  def parseContext(request: Request): Context = ()
+
+// trait Api2 extends BaseApi2:
+
+//   given RequestFromRequest: FromRequest[Request] with
+//     def fromRequest(req: Request, ctx: Context): Result[Request] = Result.Continue(req)
+
+
+
+// case class User(id: String, name: String)
+
+// trait Custom extends YoApi:
+//   override type Context = User
+//   override def parseContext(request: Request): Context =
+//     // In a real app, you would extract user info from the request (e.g., from a token)
+//     User(id = "123", name = "Alice")
+
+
+//   given UserFromRequest: FromRequest[User] with
+//     def fromRequest(req: Request, ctx: Context): Result[User] =
+//       Result.Continue(ctx) // no re-parsing needed since we already have the user in the context
+
+//   summon[FromRequest[Request]]
+
+
+
+
+// /*
+// @app.get("/:org/:timeline", authz = "timeline:<timeline>#viewer@<user>")
+// def getTimeline(org: String, timeline: String, user: User, authzInfo: AuthzInfo): keg.Response =
+//   authzInfo.checkPermission(s"timeline:$timeline#admin@${user.id}") // then also show settings
+//   ...
+
+
+// class AdminAccess
+// class ViewAccess
+// class EditAccess
+// class PublicAccess
+
+// case class CanAdminTimeline(timelineId: String)
+// case class CanEditTimeline(timelineId: String)
+// case class CanViewTimeline(timelineId: String)
+
+// given FromRequest[CanAdminTimeline] with
+//   def fromRequest(req: Request, ctx: Context): Result[CanAdminTimeline] =
+//     val user = ??? // authenticate(req)
+//     val timelineId = ??? // extract from path or query
+
+//     if checkAdminAccess("timeline", timelineId, "user", user) then
+//       Result.Continue(CanAdminTimeline(timelineId))
+//     else
+//       Result.Respond(Response(403, data = "Forbidden"))
+
+// class get(path: String, authz: (String, String)) extends EndpointAnnotation:
+//   def wrap(req: Request, next: (Context, Request) => keg.model.WebResponse): keg.model.WebResponse =
+//     val user = authenticate(req) // get user from request (e.g., from a token)
+//     val authzInfo = authorize(req, authz, user)
+
+//     next(parseContext(req), req)
+
+// @app.get("/:org/:timeline")
+// def getBuild(org: String, timeline: String, authz: CanEditTimeline) =
+//   val isAdmin = authorize(org, timeline, "timeline", "admin")
+//   tabs(
+//     ...,
+//     if isAdmin then tab("Settings", showSettings(tlId)) else None
+//   )
+
+//   timelineService.getTimeline(tlId)
+
+
+
+//   authorize(org, timeline, "timeline", "viewer"): tl =>
+//     // If the user has viewer access, they can see the timeline
+//     showTimeline(tl)
+//     ???
+
+// */

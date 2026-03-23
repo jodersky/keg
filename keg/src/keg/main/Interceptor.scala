@@ -1,10 +1,10 @@
 package keg.main
 
-import keg.model.{Request, Response, Endpoint, WsResponse}
+import keg.model.{EndpointSelector, Request, Response, Endpoint, WsResponse, WebResponse}
 
 /** An interceptor is invoked if a request matches an endpoint, but before the
-  * endpoint's handler is called. It can modify the request, short-circuit the
-  * response, or perform other actions.
+  * endpoint's invoke handler is called. It can modify the request,
+  * short-circuit the response, or perform other actions.
   *
   * Interceptors can be used to implement functionality that affects all
   * endpoints *and* which should be opaque to the endpoint handlers themselves.
@@ -35,8 +35,8 @@ trait Interceptor:
   def intercept(
     request: Request,
     endpoint: Endpoint,
-    next: Request => (Response | WsResponse)
-  ): Response | WsResponse
+    next: Request => WebResponse
+  ): WebResponse
 
   /** Additional endpoints defined by this interceptor. */
   def endpoints: Seq[Endpoint] = Seq.empty
@@ -46,16 +46,15 @@ trait Interceptor:
 
 object Interceptor:
 
-  def compose(interceptors: Seq[Interceptor]): (Request, Endpoint) => (Response | WsResponse) =
-    val invoke: (Request, Endpoint) => (Response | WsResponse) =
-      (request: Request, endpoint: Endpoint) => endpoint.invoke(request)
-
-    var fn: (Request, Endpoint) => (Response | WsResponse) = invoke
+  def compose(
+    interceptors: Seq[Interceptor]
+  ): (Request, Endpoint, Request => WebResponse) => WebResponse =
+    var fn: (Request, Endpoint, Request => WebResponse) => WebResponse = (req, _, invoke) => invoke(req)
 
     for interceptor <- interceptors do
       val previousFn = fn
-      fn = (request: Request, endpoint: Endpoint) =>
-        interceptor.intercept(request, endpoint, (req: Request) => previousFn(req, endpoint))
+      fn = (request: Request, endpoint: Endpoint, invoke: Request => WebResponse) =>
+        interceptor.intercept(request, endpoint, (req: Request) => previousFn(req, endpoint, invoke))
 
     fn
 
@@ -65,12 +64,12 @@ class LoggingInterceptor extends Interceptor:
   override def intercept(
     request: Request,
     endpoint: Endpoint,
-    next: Request => (Response | WsResponse)
-  ): Response | WsResponse =
+    next: Request => WebResponse
+  ): WebResponse =
     log.info(s"Incoming request: ${request.method} ${request.path}")
     val response = next(request)
     response match
-      case resp: Response =>
+      case resp: Response[keg.model.Data] =>
         log.info(s"Response: ${resp.status} for ${request.method} ${request.path}")
         resp
       case wsResp: WsResponse =>
@@ -85,27 +84,42 @@ class TimingInterceptor extends Interceptor:
     labels = Seq("method", "path", "status")
   )
 
+  // faster lookup
+  // val byEndpoint = java.util.concurrent.ConcurrentHashMap[Endpoint, ustats.RawHistogram]()
+
   override def onStartup(endpoints: Seq[Endpoint]): Unit =
     for ep <- endpoints do
       ep.selector match
-        case keg.model.EndpointSelector.Simple(path, methods) =>
+        case EndpointSelector.Simple(path, methods) =>
           for method <- methods do
             histogram(method, path, "200")//.reset()
         case _ =>
 
-  def intercept(request: Request, endpoint: Endpoint, next: Request => Response | WsResponse): Response | WsResponse =
+  def intercept(request: Request, endpoint: Endpoint, next: Request => WebResponse): WebResponse =
     val startTime = System.nanoTime()
     val response = next(request)
     val endTime = System.nanoTime()
     val durationSeconds = (endTime - startTime).toDouble / 1e9
 
     val status = response match
-      case resp: Response => resp.status.toString
+      case resp: Response[keg.model.Data] => resp.status.toString
       case wsResp: WsResponse => "101" // Switching Protocols
 
     val hist = histogram(request.method, request.path, status)
     hist.observe(durationSeconds)
     response
+
+  override def endpoints: Seq[Endpoint] = Seq(
+    Endpoint(
+      selector = keg.model.EndpointSelector.Simple("/metrics", Seq("GET")),
+      invoke = _ =>
+        keg.model.EndpointResult.Success(
+          Response(
+            data = ustats.Registry.global
+          )
+        )
+    )
+  )
 
 // class TimingInterceptor extends Interceptor:
 //   val unmatchedDurations = java.util.concurrent.atomic.DoubleAdder()
@@ -161,3 +175,50 @@ class TimingInterceptor extends Interceptor:
 //       ir
 
 //   override def interceptors: Seq[Interceptor] = Seq(interceptor)
+
+
+// a simple token-bucket rate limiter
+case class RateLimiter(
+  reqsPer: Long = 30,
+  unitOfTime: java.time.temporal.TemporalUnit = java.time.temporal.ChronoUnit.MINUTES
+) extends Interceptor:
+
+  private class TokenBucket(var tokens: Long, var lastRefillTime: Long):
+    val lock = java.util.concurrent.locks.ReentrantLock()
+
+    def tryConsume(): Boolean =
+      lock.lock()
+      try
+        refillIfNeeded()
+        if tokens > 0 then
+          tokens -= 1
+          true
+        else
+          false
+      finally
+        lock.unlock()
+
+    private def refillIfNeeded(): Unit =
+      val now = System.currentTimeMillis()
+      val refillIntervalMillis = unitOfTime.getDuration.toMillis / reqsPer
+      if now - lastRefillTime >= refillIntervalMillis then
+        val newTokens = ((now - lastRefillTime) / refillIntervalMillis).toLong
+        tokens = math.min(tokens + newTokens, reqsPer)
+        lastRefillTime = now
+
+  private val cache = com.github.benmanes.caffeine.cache.Caffeine.newBuilder()
+    .expireAfterAccess(java.time.Duration.of(reqsPer, unitOfTime))
+    .build[String, TokenBucket]()
+
+  override def intercept(request: Request, endpoint: Endpoint, next: Request => WebResponse): WebResponse =
+    val clientId = request.remoteIp.getHostAddress()
+    val bucket = cache.get(clientId, _ => new TokenBucket(reqsPer, 0L))
+    if bucket.tryConsume() then
+      next(request)
+    else
+      Response(
+        data = "Too Many Requests",
+        status = 429,
+        headers = Seq("Content-Type" -> "text/plain; charset=UTF-8")
+      )
+
