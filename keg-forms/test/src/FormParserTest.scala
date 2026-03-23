@@ -1,6 +1,8 @@
 import utest.*
 import keg.forms.FormParser
+import keg.forms.FormParser2
 import keg.forms.FormPart
+import keg.forms.FormDataVisitor
 import java.io.ByteArrayInputStream
 import java.nio.charset.StandardCharsets
 import java.nio.file.{Files, Path}
@@ -26,53 +28,53 @@ object FormParserTest extends TestSuite:
       test("basic parsing"):
         val input = "name=John&age=30&city=NYC"
         val stream = new ByteArrayInputStream(input.getBytes(StandardCharsets.UTF_8))
-        val result = FormParser.parseUrlEncoded(stream)
-        assert(result == Seq(FormPart.Field("name", "John"), FormPart.Field("age", "30"), FormPart.Field("city", "NYC")))
+        val result = FormParser2.parseUrlEncoded(stream, FormDataVisitor())
+        assert(result == Seq(("name", "John"), ("age", "30"), ("city", "NYC")))
 
       test("empty values"):
         val input = "key1=&key2=value2&key3="
         val stream = new ByteArrayInputStream(input.getBytes(StandardCharsets.UTF_8))
-        val result = FormParser.parseUrlEncoded(stream)
-        assert(result == Seq(FormPart.Field("key1", ""), FormPart.Field("key2", "value2"), FormPart.Field("key3", "")))
+        val result = FormParser2.parseUrlEncoded(stream, FormDataVisitor())
+        assert(result == Seq(("key1", ""), ("key2", "value2"), ("key3", "")))
 
       test("keys without values"):
         val input = "key1&key2&key3"
         val stream = new ByteArrayInputStream(input.getBytes(StandardCharsets.UTF_8))
-        val result = FormParser.parseUrlEncoded(stream)
-        assert(result == Seq(FormPart.Field("key1", ""), FormPart.Field("key2", ""), FormPart.Field("key3", "")))
+        val result = FormParser2.parseUrlEncoded(stream, FormDataVisitor())
+        assert(result == Seq(("key1", ""), ("key2", ""), ("key3", "")))
 
       test("URL-encoded special characters"):
         val input = "name=John+Doe&email=john%40example.com&message=Hello%20World%21"
         val stream = new ByteArrayInputStream(input.getBytes(StandardCharsets.UTF_8))
-        val result = FormParser.parseUrlEncoded(stream)
-        assert(result == Seq(FormPart.Field("name", "John Doe"), FormPart.Field("email", "john@example.com"), FormPart.Field("message", "Hello World!")))
+        val result = FormParser2.parseUrlEncoded(stream, FormDataVisitor())
+        assert(result == Seq(("name", "John Doe"), ("email", "john@example.com"), ("message", "Hello World!")))
 
       test("equals sign in value"):
         val input = "equation=a%3Db%2Bc"
         val stream = new ByteArrayInputStream(input.getBytes(StandardCharsets.UTF_8))
-        val result = FormParser.parseUrlEncoded(stream)
-        assert(result == Seq(FormPart.Field("equation", "a=b+c")))
+        val result = FormParser2.parseUrlEncoded(stream, FormDataVisitor())
+        assert(result == Seq(("equation", "a=b+c")))
 
       test("duplicate keys"):
         val input = "tag=scala&tag=java&tag=python"
         val stream = new ByteArrayInputStream(input.getBytes(StandardCharsets.UTF_8))
-        val result = FormParser.parseUrlEncoded(stream)
-        assert(result == Seq(FormPart.Field("tag", "scala"), FormPart.Field("tag", "java"), FormPart.Field("tag", "python")))
+        val result = FormParser2.parseUrlEncoded(stream, FormDataVisitor())
+        assert(result == Seq(("tag", "scala"), ("tag", "java"), ("tag", "python")))
 
       test("empty input"):
         val input = ""
         val stream = new ByteArrayInputStream(input.getBytes(StandardCharsets.UTF_8))
-        val result = FormParser.parseUrlEncoded(stream)
+        val result = FormParser2.parseUrlEncoded(stream, FormDataVisitor())
         assert(result.isEmpty)
 
       test("size limit enforcement"):
         val input = "a" * 2000
         val stream = new ByteArrayInputStream(input.getBytes(StandardCharsets.UTF_8))
         try
-          FormParser.parseUrlEncoded(stream, maxSize = 1000)
+          FormParser2.parseUrlEncoded(stream, FormDataVisitor(), maxNameSize = 1000)
           sys.error("Should have thrown FormTooLargeException")
         catch
-          case e: FormParser.FormTooLargeException =>
+          case e: FormParser2.FormTooLargeException =>
             assert(e.bytesRead > 1000)
             assert(e.maxSize == 1000)
 
@@ -80,40 +82,46 @@ object FormParserTest extends TestSuite:
         val input = "a" * 1001
         val stream = new ByteArrayInputStream(input.getBytes(StandardCharsets.UTF_8))
         try
-          FormParser.parseUrlEncoded(stream, maxSize = 1000)
+          FormParser2.parseUrlEncoded(stream, FormDataVisitor(), maxNameSize = 1000)
           sys.error("Should have thrown FormTooLargeException")
         catch
-          case e: FormParser.FormTooLargeException =>
+          case e: FormParser2.FormTooLargeException =>
             assert(e.bytesRead > 1000)
             assert(e.maxSize == 1000)
 
       test("size limit"):
         val input = "a" * 1000
         val stream = new ByteArrayInputStream(input.getBytes(StandardCharsets.UTF_8))
-        assert(FormParser.parseUrlEncoded(stream, maxSize = 1000).nonEmpty)
+        assert(FormParser2.parseUrlEncoded(stream, FormDataVisitor(), maxNameSize = 1000).nonEmpty)
 
       test("garbage input"):
         val input = "%%%&&&==="
         val stream = new ByteArrayInputStream(input.getBytes(StandardCharsets.UTF_8))
-        assertThrows[FormParser.InvalidFormEncodingException](FormParser.parseUrlEncoded(stream))
+        assertThrows[FormParser2.InvalidFormEncodingException](FormParser2.parseUrlEncoded(stream, FormDataVisitor()))
 
       test("encoded unicode input"):
         val input = "%E4%BD%A0%E5%A5%BD%E4%B8%96%E7%95%8C=%E2%87%94"
         val stream = new ByteArrayInputStream(input.getBytes(StandardCharsets.UTF_8))
-        val result = FormParser.parseUrlEncoded(stream)
-        assert(result == Seq(FormPart.Field("你好世界", "⇔")))
+        val result = FormParser2.parseUrlEncoded(stream, FormDataVisitor())
+        assert(result == Seq(("你好世界", "⇔")))
 
       test("encoded ampersand in value"):
         val input = "data=one%26two%26three"
         val stream = new ByteArrayInputStream(input.getBytes(StandardCharsets.UTF_8))
-        val result = FormParser.parseUrlEncoded(stream)
-        assert(result == Seq(FormPart.Field("data", "one&two&three")))
+        val result = FormParser2.parseUrlEncoded(stream, FormDataVisitor())
+        assert(result == Seq(("data", "one&two&three")))
 
       test("trailing ampersand"):
         val input = "key1=value1&key2=value2&"
         val stream = new ByteArrayInputStream(input.getBytes(StandardCharsets.UTF_8))
-        val result = FormParser.parseUrlEncoded(stream)
-        assert(result == Seq(FormPart.Field("key1", "value1"), FormPart.Field("key2", "value2")))
+        val result = FormParser2.parseUrlEncoded(stream, FormDataVisitor())
+        assert(result == Seq(("key1", "value1"), ("key2", "value2")))
+
+      test("multiple fields with same name"):
+        val input = "item=apple&item=banana&item=cherry"
+        val stream = new ByteArrayInputStream(input.getBytes(StandardCharsets.UTF_8))
+        val result = FormParser2.parseUrlEncoded(stream, FormDataVisitor())
+        assert(result == Seq(("item", "apple"), ("item", "banana"), ("item", "cherry")))
 
     test("parseMultipart"):
       val dest = FormParser.FileDest.Fs(tempDir)
@@ -132,30 +140,26 @@ object FormParserTest extends TestSuite:
           "------WebKitFormBoundary7MA4YWxkTrZu0gW--\r\n"
         )
         val stream = new ByteArrayInputStream(body.getBytes(StandardCharsets.UTF_8))
-        val result = FormParser.parseMultipart(
-          stream, boundary, dest,
-          maxSize = 1024 * 1024,
-          maxMetaSize = 512,
-          maxFieldSize = 10 * 1024,
-          maxFileSize = 10 * 1024 * 1024
+        val result = FormParser2.parseMultipart(
+          stream, boundary, FormDataVisitor()
         )
 
         assert(result.length == 2)
         result(0) match
-          case FormPart.Field(name, value) =>
+          case (name, value) =>
             assert(name == "username")
             assert(value == "alice")
           case _ => sys.error("Expected Field")
 
         result(1) match
-          case FormPart.Field(name, value) =>
+          case (name, value) =>
             assert(name == "email")
             assert(value == "alice@example.com")
           case _ => sys.error("Expected Field")
 
       test("file upload"):
         val boundary = "----WebKitFormBoundary7MA4YWxkTrZu0gW"
-        val fileContent = "Hello, this is file content!"
+        val fileContent = "Hello, this is file content!€"
         val body = (
           "------WebKitFormBoundary7MA4YWxkTrZu0gW\r\n" +
           "Content-Disposition: form-data; name=\"document\"; filename=\"test.txt\"\r\n" +
@@ -166,25 +170,15 @@ object FormParserTest extends TestSuite:
         )
 
         val stream = new ByteArrayInputStream(body.getBytes(StandardCharsets.UTF_8))
-        val result = FormParser.parseMultipart(
-          stream, boundary, dest,
-          maxSize = 1024 * 1024,
-          maxMetaSize = 512,
-          maxFieldSize = 10 * 1024,
-          maxFileSize = 10 * 1024 * 1024
+        val result = FormParser2.parseMultipart(
+          stream, boundary, FormDataVisitor()
         )
 
         assert(result.length == 1)
         result(0) match
-          case FormPart.File(name, fileName) =>
+          case (name, value) =>
             assert(name == "document")
-            assert(fileName == "test.txt")
-            // Verify file was written
-            val safeName = java.util.Base64.getEncoder().encodeToString(fileName.getBytes(StandardCharsets.UTF_8))
-            val filePath = tempDir.resolve(safeName)
-            assert(Files.exists(filePath))
-            val savedContent = new String(Files.readAllBytes(filePath), StandardCharsets.UTF_8)
-            assert(savedContent == fileContent)
+            assert(value == fileContent)
           case _ => sys.error("Expected File")
 
       test("mixed fields and files"):
@@ -203,17 +197,21 @@ object FormParserTest extends TestSuite:
         )
 
         val stream = new ByteArrayInputStream(body.getBytes(StandardCharsets.UTF_8))
-        val result = FormParser.parseMultipart(
-          stream, boundary, dest,
-          maxSize = 1024 * 1024,
-          maxMetaSize = 512,
-          maxFieldSize = 10 * 1024,
-          maxFileSize = 10 * 1024 * 1024
+        val result = FormParser2.parseMultipart(
+          stream, boundary, FormDataVisitor()
         )
 
         assert(result.length == 2)
-        assert(result(0).isInstanceOf[FormPart.Field])
-        assert(result(1).isInstanceOf[FormPart.File])
+        result(0) match
+          case (name, value) =>
+            assert(name == "title")
+            assert(value == "My Document")
+          case _ => sys.error("Expected Field")
+        result(1) match
+          case (name, value) =>
+            assert(name == "file")
+            assert(value == "PDF binary content here")
+          case _ => sys.error("Expected File")
 
       test("file size limit"):
         val boundary = "----WebKitFormBoundary7MA4YWxkTrZu0gW"
@@ -229,86 +227,20 @@ object FormParserTest extends TestSuite:
 
         val stream = new ByteArrayInputStream(body.getBytes(StandardCharsets.UTF_8))
         try
-          FormParser.parseMultipart(
-            stream, boundary, dest,
-            maxSize = 10 * 1024 * 1024,
-            maxMetaSize = 512,
-            maxFieldSize = 10 * 1024,
-            maxFileSize = 1000
-          )
-          sys.error("Should have thrown FormPartTooLargeException")
-        catch
-          case e: FormParser.FormPartTooLargeException =>
-            assert(e.partName == "bigfile")
-            assert(e.partSize > 1000)
-
-      test("field size limit"):
-        val boundary = "----WebKitFormBoundary7MA4YWxkTrZu0gW"
-        val largeContent = "x" * 2000
-        val body = (
-          "------WebKitFormBoundary7MA4YWxkTrZu0gW\r\n" +
-          "Content-Disposition: form-data; name=\"comment\"\r\n" +
-          "\r\n" +
-          largeContent + "\r\n" +
-          "------WebKitFormBoundary7MA4YWxkTrZu0gW--\r\n"
-        )
-
-        val stream = new ByteArrayInputStream(body.getBytes(StandardCharsets.UTF_8))
-        try
-          FormParser.parseMultipart(
-            stream, boundary, dest,
-            maxSize = 10 * 1024 * 1024,
-            maxMetaSize = 512,
-            maxFieldSize = 1000,
-            maxFileSize = 10 * 1024 * 1024
-          )
-          sys.error("Should have thrown FormPartTooLargeException")
-        catch
-          case e: FormParser.FormPartTooLargeException =>
-            assert(e.partName == "comment")
-            assert(e.partSize > 1000)
-
-      test("total size limit"):
-        val boundary = "----WebKitFormBoundary7MA4YWxkTrZu0gW"
-        val content1 = "a" * 1500
-        val content2 = "b" * 1500
-        val body = (
-          "------WebKitFormBoundary7MA4YWxkTrZu0gW\r\n" +
-          "Content-Disposition: form-data; name=\"field1\"\r\n" +
-          "\r\n" +
-          content1 + "\r\n" +
-          "------WebKitFormBoundary7MA4YWxkTrZu0gW\r\n" +
-          "Content-Disposition: form-data; name=\"field2\"\r\n" +
-          "\r\n" +
-          content2 + "\r\n" +
-          "------WebKitFormBoundary7MA4YWxkTrZu0gW--\r\n"
-        )
-
-        val stream = new ByteArrayInputStream(body.getBytes(StandardCharsets.UTF_8))
-        try
-          FormParser.parseMultipart(
-            stream, boundary, dest,
-            maxSize = 2000,
-            maxMetaSize = 512,
-            maxFieldSize = 10 * 1024,
-            maxFileSize = 10 * 1024 * 1024
+          FormParser2.parseMultipart(
+            stream, boundary, FormDataVisitor(maxFieldSize = 1000)
           )
           sys.error("Should have thrown FormTooLargeException")
         catch
-          case e: FormParser.FormTooLargeException =>
-            assert(e.bytesRead > 2000)
+          case e: FormParser2.FormTooLargeException =>
 
       test("missing boundary"):
         val boundary = "----WebKitFormBoundary7MA4YWxkTrZu0gW"
         val body = "This is not multipart data at all"
         val stream = new ByteArrayInputStream(body.getBytes(StandardCharsets.UTF_8))
-        assertThrows[FormParser.InvalidFormEncodingException]:
-          FormParser.parseMultipart(
-            stream, boundary, dest,
-            maxSize = 1024 * 1024,
-            maxMetaSize = 512,
-            maxFieldSize = 10 * 1024,
-            maxFileSize = 10 * 1024 * 1024
+        assertThrows[FormParser2.InvalidFormEncodingException]:
+          FormParser2.parseMultipart(
+            stream, boundary, FormDataVisitor()
           )
 
       test("special characters in field values"):
@@ -323,20 +255,69 @@ object FormParserTest extends TestSuite:
         )
 
         val stream = new ByteArrayInputStream(body.getBytes(StandardCharsets.UTF_8))
-        val result = FormParser.parseMultipart(
-          stream, boundary, dest,
-          maxSize = 1024 * 1024,
-          maxMetaSize = 512,
-          maxFieldSize = 10 * 1024,
-          maxFileSize = 10 * 1024 * 1024
+        val result = FormParser2.parseMultipart(
+          stream, boundary, FormDataVisitor()
         )
 
         assert(result.length == 1)
         result(0) match
-          case FormPart.Field(name, value) =>
+          case (name, value) =>
             assert(name == "multiline")
             assert(value == specialValue)
           case _ => sys.error("Expected Field")
 
+      test("special characters in file content"):
+        val boundary = "----WebKitFormBoundary7MA4YWxkTrZu0gW"
+        val specialContent = "Binary data with special chars: \r\n\u0000\u0001\u0002"
+        val body = (
+          "------WebKitFormBoundary7MA4YWxkTrZu0gW\r\n" +
+          "Content-Disposition: form-data; name=\"file\"; filename=\"special.bin\"\r\n" +
+          "Content-Type: application/octet-stream\r\n" +
+          "\r\n" +
+          specialContent + "\r\n" +
+          "------WebKitFormBoundary7MA4YWxkTrZu0gW--\r\n"
+        )
 
+        val stream = new ByteArrayInputStream(body.getBytes(StandardCharsets.UTF_8))
+        val result = FormParser2.parseMultipart(
+          stream, boundary, FormDataVisitor()
+        )
 
+        assert(result.length == 1)
+        result(0) match
+          case (name, value) =>
+            assert(name == "file")
+            assert(value == specialContent)
+          case _ => sys.error("Expected File")
+
+      test("multiple files with same field name"):
+        val boundary = "----WebKitFormBoundary7MA4YWxkTrZu0gW"
+        val body = (
+          "------WebKitFormBoundary7MA4YWxkTrZu0gW\r\n" +
+          "Content-Disposition: form-data; name=\"files\"; filename=\"file1.txt\"\r\n" +
+          "Content-Type: text/plain\r\n" +
+          "\r\n" +
+          "Content of file 1\r\n" +
+          "------WebKitFormBoundary7MA4YWxkTrZu0gW\r\n" +
+          "Content-Disposition: form-data; name=\"files\"; filename=\"file1.txt\"\r\n" +
+          "Content-Type: text/plain\r\n" +
+          "\r\n" +
+          "Content of file 2\r\n" +
+          "------WebKitFormBoundary7MA4YWxkTrZu0gW--\r\n"
+        )
+
+        val stream = new ByteArrayInputStream(body.getBytes(StandardCharsets.UTF_8))
+        val result = FormParser2.parseMultipart(
+          stream, boundary, FormDataVisitor()
+        )
+        assert(result.length == 2)
+        result(0) match
+          case (name, value) =>
+            assert(name == "files")
+            assert(value == "Content of file 1")
+          case _ => sys.error("Expected File")
+        result(1) match
+          case (name, value) =>
+            assert(name == "files")
+            assert(value == "Content of file 2")
+          case _ => sys.error("Expected File")

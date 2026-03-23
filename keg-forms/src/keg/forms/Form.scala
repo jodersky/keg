@@ -1,7 +1,7 @@
 package keg.forms
 
 trait FromForm[A]:
-  def parse(data: FormData): Form[A]
+  def parse(data: FormData): FormResult[A]
 
 object FromForm:
 
@@ -45,7 +45,7 @@ object FromForm:
         List("data")
       )(
         _ => List(TypeRepr.of[FormData]),
-        _ => TypeRepr.of[Form[A]]
+        _ => TypeRepr.of[FormResult[A]]
       ), {
         case (sym, List(data)) =>
           given Quotes = sym.asQuotes
@@ -125,18 +125,15 @@ object FromForm:
                 val application = argss.foldLeft(base)((lhs, args) => Apply(lhs, args))
                 application.asExprOf[A]
               }
-              Form(
-                value = Some(instance),
+              FormResult.Success(
+                value = instance,
                 fields = Map.empty, // TODO: fill in raw field values
-                fieldErrors = Map.empty,
-                globalErrors = Seq.empty
               )
             else
-              Form(
-                value = None,
-                fields = Map.empty, // TODO: fill in raw field values
+              FormResult.Error(
                 fieldErrors = fe,
-                globalErrors = Seq.empty
+                globalErrors = Seq.empty,
+                fields = Map.empty // TODO: fill in raw field values
               )
           }.asTerm
 
@@ -145,11 +142,11 @@ object FromForm:
             checkAndCall
           )
       }
-    ).asExprOf[FormData => Form[A]]
+    ).asExprOf[FormData => FormResult[A]]
 
     '{
       new FromForm[A]:
-        def parse(data: FormData): Form[A] = $parseFunc(data)
+        def parse(data: FormData): FormResult[A] = $parseFunc(data)
     }
 
 trait FormFieldReader[A]:
@@ -187,13 +184,6 @@ object FormFieldReader:
   given uuidFieldReader: FormFieldReader[java.util.UUID] = (value: String) =>
     try Right(java.util.UUID.fromString(value))
     catch case _: IllegalArgumentException => Left("not a valid UUID")
-
-case class Form[+A](
-  value: Option[A], // set if the form is valid
-  fields: collection.Map[String, String], // the raw field values that were submitted
-  fieldErrors: collection.Map[String, collection.Seq[String]], // field-specific errors,
-  globalErrors: collection.Seq[String] // global form errors
-)
 
 
 // @forms.form(render: ???)
