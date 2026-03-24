@@ -25,7 +25,17 @@ case class EndpointAbortedException(
 
 enum Listener:
   case Http(host: String, port: Int)
-  case Https(host: String, port: Int, cert: String, key: String)
+  case Https(host: String, port: Int, key: String, cert: String)
+
+  def asUrl: String = this match
+    case Http(host, port) => s"http://${Listener.ipAsUrl(host)}:$port"
+    case Https(host, port, _, _) => s"https://${Listener.ipAsUrl(host)}:$port"
+
+object Listener:
+  private def ipAsUrl(addr: String): String =
+    if addr.contains(":") then s"[$addr]"
+    else addr
+
 
 /** A simple HTTP server using Undertow.
   *
@@ -51,10 +61,9 @@ enum Listener:
   * @param csrfAllowedOrigins
   *   A set of allowed origins for CSRF protection.
   */
-class Server(
+case class Server(
     val endpoints: Seq[Endpoint | Recovery],
-    port: Int = 8080,
-    host: String = "::",
+    listeners: Seq[Listener] = Seq(Listener.Http("::", 8080)),
     debugMode: Boolean = Server.debugFromEnv,
     secrets: Seq[Secret] = Seq.empty,
     sessionMaxAgeSeconds: Int = 3600,
@@ -63,7 +72,7 @@ class Server(
     csrfAllowedOrigins: Set[String] = Set.empty,
     interceptors: Seq[Interceptor] = Seq.empty,
     debugInterceptors: Seq[Interceptor] = Seq(Reloader),
-    listeners: Seq[Listener] = Seq()
+    transportBuilder: keg.transport.TransportBuilder = new keg.transport.UndertowTransportBuilder()
 ):
   log.info(s"Debug mode: $debugMode")
   log.info(s"Initializing Keg Server with ${endpoints.size} endpoints")
@@ -122,7 +131,7 @@ class Server(
     if debugMode then interceptors ++ debugInterceptors
     else interceptors
 
-  private def addToTry(
+  private def addToTrie(
     trie: DispatchTrie[(Endpoint, Request => WebResponse)],
     path: String,
     methods: Seq[String],
@@ -157,9 +166,9 @@ class Server(
       case ep: Endpoint =>
         ep.selector match
           case EndpointSelector.Simple(path, methods) =>
-            addToTry(dispatchTrie, path, methods, ep)
+            addToTrie(dispatchTrie, path, methods, ep)
           case EndpointSelector.WebSocketUpgrade(path) =>
-            addToTry(websocketDispatchTrie, path, Seq("GET"), ep)
+            addToTrie(websocketDispatchTrie, path, Seq("GET"), ep)
           case EndpointSelector.NotFound =>
             if notFoundEndpoint ne Server.defaultNotFoundEndpoint then
               throw new Exception(
@@ -181,334 +190,100 @@ class Server(
   private val interceptorFn =
     Interceptor.compose(activeInterceptors)
 
-  private given castorContext: castor.Context = castor.Context.Simple(
-    castor.Context.Simple.executionContext,
-    err => log.error("Actor error", err)
-  )
+  private val handlerFunc: Request => WebResponse = (req0: Request) =>
+    val sessionData = req0.cookies.get("_session") match
+      case None => Map.empty[String, String]
+      case Some(cookie) =>
+        WebAppUtil.verifyMap(cookie.value, runtimeSecrets)
 
-  private class WsChannelActor(channel: io.undertow.websockets.core.WebSocketChannel) extends castor.SimpleActor[keg.model.Ws.Event]:
-    import io.undertow.websockets.core.WebSockets
-    import keg.model.Ws
-    import java.nio.ByteBuffer
+    val flashData = req0.cookies.get("_flash") match
+      case None => Map.empty[String, String]
+      case Some(cookie) =>
+        WebAppUtil.verifyMap(cookie.value, runtimeSecrets)
 
-    def run(item: Ws.Event): Unit = item match
-      case Ws.Text(value) => WebSockets.sendTextBlocking(value, channel)
-      case Ws.Binary(value) => WebSockets.sendBinaryBlocking(ByteBuffer.wrap(value), channel)
-      case Ws.Ping(value) => WebSockets.sendPingBlocking(ByteBuffer.wrap(value), channel)
-      case Ws.Pong(value) => WebSockets.sendPongBlocking(ByteBuffer.wrap(value), channel)
-      case Ws.Close(code, reason) => WebSockets.sendCloseBlocking(code, reason, channel)
+    val decodedPathSegments = Util.splitPath(req0.path)
 
-  end WsChannelActor
+    val lookupResult = if req0.headers.get("upgrade").contains("websocket") then
+      websocketDispatchTrie.lookup(decodedPathSegments)
+    else
+      dispatchTrie.lookup(decodedPathSegments)
 
+    val req = req0.copy(
+      pathParams = lookupResult.bindings,
+      remainingPathSegments = lookupResult.remainingPathSegments,
+      session = sessionData,
+      flash = flashData
+    )
 
-  private class WsHandler(f: WsChannelActor => castor.Actor[keg.model.Ws.Event]) extends io.undertow.websockets.WebSocketConnectionCallback:
-    import io.undertow.websockets.spi.WebSocketHttpExchange
-    import io.undertow.websockets.core.WebSocketChannel
-    import io.undertow.websockets.core.{AbstractReceiveListener, BufferedBinaryMessage, BufferedTextMessage, CloseMessage, WebSocketChannel, WebSockets}
-    import keg.model.Ws
+    val response0 =
+      if lookupResult.items.isEmpty then
+        interceptorFn(req, notFoundEndpoint, notFoundFn)
+      else
+        lookupResult.items.get(req0.method) match
+          case Some((endpoint, fn)) =>
+            interceptorFn(req, endpoint, fn)
+          case None =>
+            interceptorFn(req, notFoundEndpoint, methodNotAllowedFn)
 
-    def onConnect(exchange: WebSocketHttpExchange, channel: WebSocketChannel): Unit =
-      channel.suspendReceives()
-      val actor = f(new WsChannelActor(channel))
-      // Somehow browsers closing tabs and Java processes being killed appear
-      // as different events here; the former goes to AbstractReceiveListener#onClose,
-      // while the latter to ChannelListener#handleEvent. Make sure we handle both cases.
-      channel.addCloseTask(channel => actor.send(Ws.ChannelClosed()))
-      channel.getReceiveSetter.set(
-        new AbstractReceiveListener() {
-          override def onFullTextMessage(channel: WebSocketChannel, message: BufferedTextMessage) = {
-            actor.send(Ws.Text(message.getData))
-          }
+    val response = response0 match
+      case simple: keg.model.Response[keg.model.Data] =>
+        val extraCookies = collection.mutable.ListBuffer.empty[keg.model.Cookie]
 
-          override def onFullBinaryMessage(channel: WebSocketChannel, message: BufferedBinaryMessage): Unit = {
-            actor.send(Ws.Binary(
-              WebSockets.mergeBuffers(message.getData.getResource*).array()
-            ))
-          }
-
-          override def onFullPingMessage(channel: WebSocketChannel, message: BufferedBinaryMessage): Unit = {
-            actor.send(Ws.Ping(
-              WebSockets.mergeBuffers(message.getData.getResource*).array()
-            ))
-          }
-          override def onFullPongMessage(channel: WebSocketChannel, message: BufferedBinaryMessage): Unit = {
-            actor.send(Ws.Pong(
-              WebSockets.mergeBuffers(message.getData.getResource*).array()
-            ))
-          }
-
-          override def onCloseMessage(cm: CloseMessage, channel: WebSocketChannel) = {
-            actor.send(Ws.Close(cm.getCode, cm.getReason))
-          }
-        }
-      )
-      channel.resumeReceives()
-  end WsHandler
-
-  private object handler extends undertow.server.HttpHandler:
-    override def handleRequest(
-        exchange: undertow.server.HttpServerExchange
-    ): Unit =
-
-
-      def writeSimpleResponse(response0: keg.model.Response[keg.model.Data]): Unit =
-        val response = if debugMode then Reloader.inject(response0) else response0
-
-        exchange.setStatusCode(response.status)
-
-        for (key, value) <- response.data.headers do
-          exchange
-            .getResponseHeaders()
-            .put(
-              undertow.util.HttpString(key),
-              value
-            )
-
-        for (key, value) <- response.headers do
-          exchange
-            .getResponseHeaders()
-            .put(
-              undertow.util.HttpString(key),
-              value
-            )
-
-        for cookie <- response.cookies do
-          val ucookie = undertow.server.handlers.CookieImpl(
-            cookie.name,
-            cookie.value
-          )
-          ucookie.setComment(cookie.comment)
-          ucookie.setDomain(cookie.domain)
-          ucookie.setExpires(
-            if (cookie.expires == null) null
-            else java.util.Date.from(cookie.expires)
-          )
-          ucookie.setMaxAge(cookie.maxAge)
-          ucookie.setPath(cookie.path)
-          ucookie.setVersion(cookie.version)
-          ucookie.setDiscard(cookie.discard)
-          ucookie.setHttpOnly(cookie.httpOnly)
-          ucookie.setSecure(cookie.secure)
-          ucookie.setSameSiteMode(cookie.sameSite)
-          exchange.setResponseCookie(ucookie)
-
-        if response.session != null then
-          if response.session.nonEmpty then
-            val sessionCookie = undertow.server.handlers.CookieImpl(
-              "_session",
-              WebAppUtil.signMap(
-                response.session,
+        if simple.session != null then
+          if simple.session.nonEmpty then
+            extraCookies += keg.model.Cookie(
+              name = "_session",
+              value = WebAppUtil.signMap(
+                simple.session,
                 System.currentTimeMillis() / 1000L + sessionMaxAgeSeconds,
                 runtimeSecrets.head
-              )
+              ),
+              path = "/",
+              httpOnly = true,
+              sameSite = "Lax",
+              maxAge = sessionMaxAgeSeconds
             )
-            sessionCookie.setMaxAge(sessionMaxAgeSeconds)
-            sessionCookie.setPath("/")
-            sessionCookie.setHttpOnly(true)
-            sessionCookie.setSameSiteMode("Lax")
-            exchange.setResponseCookie(sessionCookie)
-          else if exchange.getRequestCookie("_session") != null then
-            val sessionCookie = undertow.server.handlers.CookieImpl(
-              "_session",
-              ""
+          else if req.cookies.contains("_session") then
+            extraCookies += keg.model.Cookie(
+              name = "_session",
+              value = "",
+              path = "/",
+              maxAge = 0 // delete cookie
             )
-            sessionCookie.setMaxAge(0) // delete cookie
-            sessionCookie.setPath("/")
-            exchange.setResponseCookie(sessionCookie)
 
-        if response.flash != null then
-          if response.flash.nonEmpty then
-            val flashCookie = undertow.server.handlers.CookieImpl(
-              "_flash",
-              WebAppUtil.signMap(
-                response.flash,
+        if simple.flash != null then
+          if simple.flash.nonEmpty then
+            extraCookies += keg.model.Cookie(
+              name = "_flash",
+              value = WebAppUtil.signMap(
+                simple.flash,
                 System.currentTimeMillis() / 1000L + flashMaxAgeSeconds,
                 runtimeSecrets.head
-              )
+              ),
+              path = "/",
+              httpOnly = true,
+              sameSite = "Lax",
+              maxAge = flashMaxAgeSeconds
             )
-            flashCookie.setMaxAge(flashMaxAgeSeconds)
-            flashCookie.setPath("/")
-            flashCookie.setHttpOnly(true)
-            flashCookie.setSameSiteMode("Lax")
-            exchange.setResponseCookie(flashCookie)
-          else if exchange.getRequestCookie("_flash") != null then
-            val flashCookie = undertow.server.handlers.CookieImpl(
-              "_flash",
-              ""
+          else if req.cookies.contains("_flash") then
+            extraCookies += keg.model.Cookie(
+              name = "_flash",
+              value = "",
+              path = "/",
+              maxAge = 0 // delete cookie
             )
-            flashCookie.setMaxAge(0) // delete cookie
-            flashCookie.setPath("/")
-            exchange.setResponseCookie(flashCookie)
 
-        val out = exchange.getOutputStream()
-        response.data.write(out)
-      end writeSimpleResponse
+        simple.copy(cookies = simple.cookies ++ extraCookies)
+      case wsResponse: WsResponse =>
+        wsResponse
 
-      val headersMap = collection.mutable.Map.empty[String, collection.mutable.ListBuffer[String]]
+    response
 
-      exchange.getRequestHeaders().forEach: headerValues =>
-        val headerName = headerValues.getHeaderName.toString.toLowerCase
-        val values = headersMap.getOrElseUpdate(headerName, collection.mutable.ListBuffer.empty[String])
-        headerValues.forEach(value => values += value)
-
-      val headers = keg.util.MultiDict(headersMap)
-
-      import scala.jdk.CollectionConverters.given
-
-      val cookies = exchange
-        .requestCookies()
-        .asScala
-        .map { c =>
-          c.getName() -> keg.model.Cookie(
-            name = c.getName(),
-            value = c.getValue(),
-            comment = c.getComment(),
-            domain = c.getDomain(),
-            expires =
-              if c.getExpires() == null then null
-              else c.getExpires().toInstant(),
-            maxAge = c.getMaxAge(),
-            path = c.getPath(),
-            version = c.getVersion(),
-            discard = c.isDiscard(),
-            httpOnly = c.isHttpOnly(),
-            secure = c.isSecure(),
-            sameSite = c.getSameSiteMode()
-          )
-        }
-        .toMap
-
-      val sessionData: Map[String, String] =
-        exchange.getRequestCookie("_session") match
-          case null =>
-            Map()
-          case cookie =>
-            WebAppUtil.verifyMap(cookie.getValue(), runtimeSecrets)
-      val flashData: Map[String, String] =
-        exchange.getRequestCookie("_flash") match
-          case null   => Map()
-          case cookie =>
-            WebAppUtil.verifyMap(cookie.getValue(), runtimeSecrets)
-
-      val decodedPathSegments = Util.splitPath(java.net.URLDecoder.decode(exchange.getRequestPath(), "UTF-8"))
-
-      val lookupResult = if exchange.getRequestHeaders().getFirst("upgrade") == "websocket" then
-        websocketDispatchTrie.lookup(decodedPathSegments)
-      else
-        dispatchTrie.lookup(decodedPathSegments)
-
-      // val path: String =
-      //   uri.indexOf('?') match
-      //     case -1  => uri
-      //     case idx => uri.substring(0, idx)
-
-      val request = keg.model.Request(
-        method = exchange.getRequestMethod().toString,
-        path = exchange.getRequestPath(),
-        queryParams = Util.decodeQueryString(
-          exchange.getQueryString()
-        ),
-        headers = headers,
-        pathParams = lookupResult.bindings,
-        remainingPathSegments = lookupResult.remainingPathSegments,
-        cookies = cookies,
-        session = sessionData,
-        flash = flashData,
-        getBody = () => exchange.getInputStream(),
-        remoteIp = exchange.getSourceAddress().getAddress()
-      )
-
-      // def writeResponseOrError(ep: Endpoint, result: EndpointResult): Unit =
-      //   result match
-      //     case EndpointResult.Success(response: Response[keg.model.Data]) =>
-      //       writeResponse(response)
-      //     case EndpointResult.Success(wsResponse: WsResponse) =>
-      //       val wsHandler = WsHandler(wsResponse.f)
-      //       io.undertow.Handlers.websocket(wsHandler).handleRequest(exchange)
-      //     case f: EndpointResult.Failure =>
-      //       writeResponse(recovery.invoke(request, ep, f))
-
-      def writeResponse(response: WebResponse): Unit = response match
-        case simple: keg.model.Response[keg.model.Data] =>
-          writeSimpleResponse(simple)
-        case wsResponse: WsResponse =>
-          val wsHandler = WsHandler(wsResponse.f)
-          io.undertow.Handlers.websocket(wsHandler).handleRequest(exchange)
-
-      if lookupResult.items.isEmpty then
-        writeResponse(interceptorFn(request, notFoundEndpoint, notFoundFn))
-      else
-        lookupResult.items.get(exchange.getRequestMethod().toString) match
-          case Some(endpoint, fn) =>
-            writeResponse(interceptorFn(request, endpoint, fn))
-            // WebAppUtil.checkCsrf(request.method, headers, csrfAllowedOrigins) match
-            //   case false =>
-            //     writeResponse(recovery.invoke(request, endpoint, EndpointResult.Failure.MethodAbort(403, "CSRF validation failed")))
-            //   case true =>
-            //     writeResponseOrError(
-            //       endpoint,
-            //       endpoint.invoke(request)
-            //     )
-          case None =>
-            writeResponse(interceptorFn(request, notFoundEndpoint, methodNotAllowedFn))
-
-
-      // try
-      //   // WebAppUtil.checkCsrf(request.method, headers, csrfAllowedOrigins) match
-      //   //   case false =>
-      //   //     val result = recovery.invoke(request, ???, EndpointResult.Failure.MethodAbort(403, "CSRF validation failed"))
-      //   //     result match
-      //   //       case EndpointResult.Success(response) =>
-      //   //         writeResponse(response)
-      //   //       case EndpointResult.Failure(failure) =>
-      //   //         val response = recovery.invoke(request, ???, failure)
-      //   //         writeResponse(response)
-
-      //   //     return
-      //   //   case true => // continue
-
-      //   if lookupResult.items.isEmpty then
-      //     writeResponse(abortedEndpoint.invoke(request, 404, "Not Found"))
-      //   else
-      //     lookupResult.items.get(exchange.getRequestMethod().toString) match
-      //       case Some(endpoint) =>
-      //         try
-      //           val response = interceptorFn(request, endpoint)
-      //           response match
-      //             case simple: keg.model.Response[keg.model.Data] =>
-      //               writeResponse(simple)
-      //             case wsResponse: keg.model.WsResponse =>
-      //               val wsHandler = WsHandler(wsResponse.f)
-      //               io.undertow.Handlers.websocket(wsHandler).handleRequest(exchange)
-      //         catch
-      //           case EndpointAbortedException(code, endpoint, pos, message) =>
-      //             val message1 = s"Endpoint aborted with code $code at ${pos.file}:${pos.line}:${pos.column} in ${pos.function}: $message"
-      //             val response = abortedEndpoint.invoke(request, code, message1)
-      //             writeResponse(response)
-
-      //       case None =>
-      //         writeResponse(abortedEndpoint.invoke(request, 405, "Method Not Allowed"))
-      // catch
-      //   case err: Throwable =>
-      //     val response = errorEndpoint.invoke(request, err)
-      //     writeResponse(response)
-  end handler
-
-  private val server =
-    val builder = undertow.Undertow
-      .builder()
-      .setHandler(undertow.server.handlers.BlockingHandler(handler))
-      .addHttpListener(port, host)
-
-    for listener <- listeners do
-      listener match
-        case Listener.Http(host, port) =>
-          builder.addHttpListener(port, host)
-        case Listener.Https(host, port, cert, key) =>
-          val sslContext = Util.mkSslContext(key, cert)
-          builder.addHttpsListener(port, host, sslContext)
-
-    builder.build()
+  private val transport = transportBuilder.build(
+    listeners,
+    handlerFunc,
+    log.info(_)
+  )
 
   def start(): Unit =
     if activeInterceptors.nonEmpty then
@@ -520,25 +295,32 @@ class Server(
         case ep: Endpoint => ep
       }))
 
-    log.info(s"Starting Keg Server on port $port")
-    server.start()
-    val listeners = server.getListenerInfo().iterator()
+    log.info(s"Starting Keg Server")
+    transport.start()
+
+    val listeners = transport.getListeners.iterator
     while listeners.hasNext do
       val listener = listeners.next()
 
       log.info(
-        s"Keg server listening on ${Util.prettySocketAddr(listener.getProtcol(), listener.getAddress.asInstanceOf[java.net.InetSocketAddress])}"
+        s"Listening on ${listener.asUrl}"
       )
 
-  def serverPort() =
-    server.getListenerInfo().get(0).getAddress().asInstanceOf[java.net.InetSocketAddress].getPort()
+  def serverPort() = transport.getListeners.headOption match
+    case Some(Listener.Http(_, port)) => port
+    case Some(Listener.Https(_, port, _, _)) => port
+    case None => throw new Exception("Server is not listening on any ports")
 
   def awaitTermination(): Unit =
-    server.getWorker().awaitTermination()
+    transport.awaitTermination()
 
   def stop(): Unit =
     log.info("Stopping Keg Server")
-    server.stop()
+    transport.stop()
+
+  def kill(): Unit =
+    log.info("Killing Keg Server")
+    transport.kill()
 
 object Server:
 

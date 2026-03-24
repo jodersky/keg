@@ -15,6 +15,7 @@ export keg.model.WsActor
 
 export keg.main.Server
 export keg.main.Secret
+export keg.main.Listener
 
 object default extends keg.derivation.Api
 export keg.default.request

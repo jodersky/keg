@@ -183,8 +183,9 @@ def main() =
     ),
     listeners = Seq(
       keg.main.Listener.Http("::1", 8081),
-      keg.main.Listener.Https("::1", 8443, cert, key)
-    )
+      keg.main.Listener.Https("::1", 8443, key, cert)
+    ),
+    // transportBuilder = new keg.transport.uhttp.UhttpTransportBuilder
   )
 
 

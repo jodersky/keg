@@ -27,7 +27,7 @@ object WsTest extends TestSuite:
             keg.EndpointMeta()
           )
         ),
-        port = 0
+        listeners = Seq(keg.Listener.Http("localhost", 0)),
       )
 
       object Listener extends java.net.http.WebSocket.Listener:

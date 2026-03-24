@@ -291,6 +291,9 @@ trait ExtraFroms extends StandardFroms:
         override def headers: Seq[(String, String)] = Seq(
           "Content-Type" -> "application/json; charset=UTF-8"
         )
+
+        def contentLength = None // we don't know the content length in advance since we're streaming
+
       Response(jsonData)
 
 trait Api extends ExtraFroms:

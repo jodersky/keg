@@ -1,10 +1,12 @@
 import utest.*
 
+import keg.transport.uhttp
+
 object ParserTest extends TestSuite:
 
   def mkStream(s: String) = new java.io.ByteArrayInputStream(s.getBytes("UTF-8"))
 
-  def ok(r: uhttp.ParseResult): uhttp.Request =
+  def ok(r: uhttp.ParseResult): uhttp.RequestHead =
     assert(r.isInstanceOf[uhttp.ParseResult.Ok])
     r.asInstanceOf[uhttp.ParseResult.Ok].request
 
@@ -145,7 +147,7 @@ object ParserTest extends TestSuite:
     test("lfOnlyLineEnding"):
       // LF-only without CR is not valid HTTP/1.1
       val result = uhttp.parse(mkStream("GET / HTTP/1.1\n\n"))
-      assert(result != uhttp.ParseResult.Ok(uhttp.Request("GET", "/", Map.empty)))
+      assert(result != uhttp.ParseResult.Ok(uhttp.RequestHead("GET", "/", Map.empty)))
 
     // --- too large ---
 

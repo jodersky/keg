@@ -13,10 +13,11 @@ object thirdparty:
   val castor = mvn"com.lihaoyi::castor::0.3.0"
   val ustats = mvn"io.crashbox::ustats:0.7.0"
 
-  val utest = mvn"com.lihaoyi::utest:0.9.4"
+  val utest = mvn"com.lihaoyi::utest::0.9.5"
   val requests = mvn"com.lihaoyi::requests:0.9.0"
   val scalatags = mvn"com.lihaoyi::scalatags:0.13.1"
 
   val caffeine = mvn"com.github.ben-manes.caffeine:caffeine:3.1.8"
 
   val geny = mvn"com.lihaoyi::geny::1.1.1"
+  val oslib = mvn"com.lihaoyi::os-lib:0.9.1"

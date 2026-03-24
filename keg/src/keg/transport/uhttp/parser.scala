@@ -1,13 +1,13 @@
-package uhttp
+package keg.transport.uhttp
 
 enum ParseResult:
-  case Ok(request: Request)
+  case Ok(request: RequestHead)
   case UnsupportedProtocol
   case MalformedRequest
   case RequestLineTooLarge
   case HeadersTooLarge
 
-case class Request(
+case class RequestHead(
   method: String,
   uri: String,
   headers: collection.Map[String, collection.Seq[String]] // headers are lowercased
@@ -169,4 +169,69 @@ def parse(
 
   // at this point the request line, headers and empty line have been read,
   // the body (if any) is the remainder of the stream
-  ParseResult.Ok(Request(method, uri, headers))
+  ParseResult.Ok(RequestHead(method, uri, headers))
+
+def parseCookieHeaders(cookies: collection.Seq[String]): Map[String, keg.model.Cookie] =
+  val result = scala.collection.mutable.Map[String, keg.model.Cookie]()
+
+  for rawCookie <- cookies do
+    val parts = rawCookie.split(";").nn.map(_.nn.trim.nn)
+    if parts.nonEmpty then
+      val nameValue = parts(0)
+      val eqIdx = nameValue.indexOf('=')
+      val (name, value) =
+        if eqIdx < 0 then (nameValue, "")
+        else (nameValue.substring(0, eqIdx).trim.nn, nameValue.substring(eqIdx + 1).trim.nn)
+
+      var comment: String  = null
+      var domain: String   = null
+      var expires: java.time.Instant = null
+      var maxAge: Integer  = null
+      var path: String     = null
+      var version: Int     = 1
+      var discard          = false
+      var httpOnly         = false
+      var secure           = false
+      var sameSite: String = "Lax"
+
+      for part <- parts.drop(1) do
+        val attrEq = part.indexOf('=')
+        val (attrName, attrValue) =
+          if attrEq < 0 then (part.toLowerCase.nn, "")
+          else (part.substring(0, attrEq).trim.toLowerCase.nn, part.substring(attrEq + 1).trim.nn)
+
+        attrName match
+          case "comment"  => comment  = attrValue
+          case "domain"   => domain   = attrValue
+          case "path"     => path     = attrValue
+          case "samesite" => sameSite = attrValue
+          case "version"  => version  = attrValue.toIntOption.getOrElse(1)
+          case "max-age"  => maxAge   = attrValue.toIntOption.map(Integer.valueOf).orNull
+          case "discard"  => discard  = true
+          case "httponly" => httpOnly = true
+          case "secure"   => secure   = true
+          case "expires"  =>
+            try
+              expires = java.time.Instant.from(
+                java.time.format.DateTimeFormatter.RFC_1123_DATE_TIME.parse(attrValue)
+              )
+            catch case _: Exception => () // ignore unparseable dates
+          case _ => () // ignore unknown attributes
+
+      result(name) = keg.model.Cookie(
+        name     = name,
+        value    = value,
+        comment  = comment,
+        domain   = domain,
+        expires  = expires,
+        maxAge   = maxAge,
+        path     = path,
+        version  = version,
+        discard  = discard,
+        httpOnly = httpOnly,
+        secure   = secure,
+        sameSite = sameSite,
+      )
+
+  result.toMap
+

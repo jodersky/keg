@@ -89,6 +89,7 @@ object Static:
             finally
               in.close()
           def headers: Seq[(String, String)] = Seq()
+          def contentLength: Option[Long] = None
         ,
         status = 200,
         headers = headers
@@ -118,6 +119,7 @@ object Static:
             finally
               assetStream.close()
           def headers: Seq[(String, String)] = Seq()
+          def contentLength: Option[Long] = None
         ,
         status = 200,
         headers = headers

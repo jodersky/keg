@@ -1,4 +1,4 @@
-//| mill-version: 1.0.6
+//| mill-version: 1.1.4
 //| mvnDeps: ["com.lihaoyi::mill-contrib-jmh:$MILL_VERSION"]
 
 import mill.*, scalalib.*, scalanativelib.*, scalafmt.*
@@ -25,7 +25,8 @@ object keg extends ScalaModule with ScalafmtModule:
     def testFramework = "utest.runner.Framework"
     def mvnDeps = Seq(
       thirdparty.utest,
-      thirdparty.requests
+      thirdparty.requests,
+      thirdparty.oslib
     )
 
   def moduleDeps = Seq(forms)
@@ -65,14 +66,15 @@ object uhttp extends Module:
     )
 
     def moduleDir = super.moduleDir / os.up
-
+  object jvm extends UhttpModule:
     object test extends ScalaTests:
       def testFramework = "utest.runner.Framework"
       def mvnDeps = Seq(thirdparty.utest)
-
-  object jvm extends UhttpModule
   object native extends UhttpModule with ScalaNativeModule:
     def scalaNativeVersion = scalaNative
+    object test extends ScalaNativeTests:
+      def testFramework = "utest.runner.Framework"
+      def mvnDeps = Seq(thirdparty.utest)
 
 object sandbox extends ScalaModule:
   def scalaVersion = scala3

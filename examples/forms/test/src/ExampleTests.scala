@@ -2,13 +2,14 @@ import utest.*
 
 object ExampleTests extends TestSuite:
 
-  def withServer[T](server: keg.main.Server)(f: String => T): T = {
+  def withServer[T](server0: keg.Server)(f: String => T): T =
+    val server = server0.copy(listeners = List(keg.Listener.Http("::1", 0)))
     server.start()
+    val port = server.serverPort()
     val res =
-      try f("http://localhost:8080")
+      try f(s"http://[::1]:$port")
       finally server.stop()
     res
-  }
 
   val tests = Tests:
     test("Endpoints"):

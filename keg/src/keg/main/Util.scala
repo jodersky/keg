@@ -164,88 +164,71 @@ object Util {
 
     MultiDict(params)
 
-  private def compactIpv6(addr: java.net.Inet6Address): String =
-    val bytes = addr.getAddress() // 16 bytes, big-endian
-    val hextets = Array.tabulate(8)(i => ((bytes(2 * i) & 0xff) << 8) | (bytes(2 * i + 1) & 0xff))
-
-    // Find the longest run of consecutive zero hextets, leftmost on tie
-    var bestStart = -1
-    var bestLen = 0
-    var i = 0
-    while i < 8 do
-      if hextets(i) == 0 then
-        var j = i
-        while j < 8 && hextets(j) == 0 do j += 1
-        val len = j - i
-        if len > bestLen then
-          bestLen = len
-          bestStart = i
-        i = j
-      else
-        i += 1
-
-    if bestLen == 0 then
-      hextets.map(_.toHexString).mkString(":")
-    else
-      val before = hextets.slice(0, bestStart).map(_.toHexString).mkString(":")
-      val after  = hextets.slice(bestStart + bestLen, 8).map(_.toHexString).mkString(":")
-      s"$before::$after"
-
-  def prettySocketAddr(
-    scheme: String,
-    addr: java.net.InetSocketAddress
-  ): String =
-    addr.getAddress() match
-      case ipv4: java.net.Inet4Address => s"$scheme://${ipv4.getHostAddress}:${addr.getPort}"
-      case ipv6: java.net.Inet6Address => s"$scheme://[${compactIpv6(ipv6)}]:${addr.getPort}"
-      case other => s"$scheme://${other.getHostAddress}:${addr.getPort}"
-
-  def mkSslContext(
-    keyPem: String,
-    certPem: String
-  ): javax.net.ssl.SSLContext =
-    import java.io.ByteArrayInputStream
+  def readPrivateKey(pem: String): java.security.PrivateKey =
     import java.security.{KeyFactory, KeyStore}
-    import java.security.cert.CertificateFactory
     import java.security.spec.{InvalidKeySpecException, PKCS8EncodedKeySpec}
-    import javax.net.ssl.{KeyManagerFactory, SSLContext}
     import java.util.Base64
 
-    val keyPemClean = keyPem
+    val keyPemClean = pem
       .replace("-----BEGIN PRIVATE KEY-----", "")
       .replace("-----END PRIVATE KEY-----", "")
       .replaceAll("\\s+", "")
     val keyBytes = Base64.getDecoder.decode(keyPemClean)
     val keySpec = new PKCS8EncodedKeySpec(keyBytes)
 
-    val privateKey =
-      try KeyFactory.getInstance("RSA").generatePrivate(keySpec)
-      catch
-        case _: InvalidKeySpecException =>
-          try KeyFactory.getInstance("EC").generatePrivate(keySpec)
-          catch
-            case _: InvalidKeySpecException =>
-              try KeyFactory.getInstance("Ed25519").generatePrivate(keySpec)
-              catch
-                case _: InvalidKeySpecException =>
-                  throw IllegalArgumentException(
-                    "Unsupported PKCS#8 key type: only RSA, EC, and Ed25519 are supported"
-                  )
+    try KeyFactory.getInstance("RSA").generatePrivate(keySpec)
+    catch
+      case _: InvalidKeySpecException =>
+        try KeyFactory.getInstance("EC").generatePrivate(keySpec)
+        catch
+          case _: InvalidKeySpecException =>
+            try KeyFactory.getInstance("Ed25519").generatePrivate(keySpec)
+            catch
+              case _: InvalidKeySpecException =>
+                throw IllegalArgumentException(
+                  "Unsupported PKCS#8 key type: only RSA, EC, and Ed25519 are supported"
+                )
+
+  def readCertificate(pem: String): java.security.cert.Certificate =
+    import java.io.ByteArrayInputStream
+    import java.security.cert.CertificateFactory
 
     val certFactory = CertificateFactory.getInstance("X.509")
-    val cert = certFactory.generateCertificate(
-      new ByteArrayInputStream(certPem.getBytes("UTF-8"))
+    certFactory.generateCertificate(
+      new ByteArrayInputStream(pem.getBytes("UTF-8"))
     )
 
-    val keyStore = KeyStore.getInstance("PKCS12") // PKCS12 is the modern standard, it supersedes the older JKS format
-    keyStore.load(null, null)
-    keyStore.setKeyEntry("key", privateKey, Array.empty[Char], Array(cert))
+  def mkSslContext(
+    keyPem: String = null,
+    certPem: String = null,
+    trustedCa: String = null
+  ): javax.net.ssl.SSLContext =
+    import java.security.{KeyFactory, KeyStore}
+    import javax.net.ssl.{KeyManagerFactory, SSLContext, TrustManagerFactory}
 
-    val kmf = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm)
-    kmf.init(keyStore, Array.empty[Char])
+    val kms: Array[javax.net.ssl.KeyManager] = if keyPem != null && certPem != null then
+      val key = readPrivateKey(keyPem)
+      val cert = readCertificate(certPem)
+      val ks = KeyStore.getInstance("PKCS12") // PKCS12 is the newer standard, it supersedes JKS
+      ks.load(null, null)
+      ks.setKeyEntry("key", key, null, Array(cert))
+      val kmf = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm)
+      kmf.init(ks, null)
+      kmf.getKeyManagers()
+    else null // null --- IGNORE ---
 
-    val sslContext = SSLContext.getInstance("TLS")
-    sslContext.init(kmf.getKeyManagers, null, null)
+    val tms: Array[javax.net.ssl.TrustManager] = if trustedCa != null then
+      val cert = readCertificate(trustedCa)
+      val ks = KeyStore.getInstance("PKCS12")
+      ks.load(null, null)
+      ks.setCertificateEntry("ca", cert)
+      val tmf = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm)
+      tmf.init(ks)
+      tmf.getTrustManagers()
+    else null // null --- IGNORE ---
+
+    val sslContext = javax.net.ssl.SSLContext.getInstance("TLS")
+    sslContext.init(kms, tms, null)
     sslContext
 
 }

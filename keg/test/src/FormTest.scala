@@ -5,12 +5,12 @@ object FormTest extends TestSuite:
   def withServer(endpoints: Seq[keg.Endpoint])(fn: String => Unit): Unit =
     val server = keg.Server(
       endpoints = endpoints,
-      port = 0,
+      listeners = Seq(keg.Listener.Http("::1", 0)),
       debugMode = true
     )
     server.start()
     try
-      fn(s"http://localhost:${server.serverPort()}")
+      fn(s"http://[::1]:${server.serverPort()}")
     finally
       server.stop()
 

@@ -57,13 +57,15 @@ trait Data:
   /** Write the data to the given HTTP response's output stream. */
   def write(out: java.io.OutputStream): Unit
 
-  /** Headers related to the body. Typically this includes Content-Type and
-    * Content-Length.
-    * Note however that transfer-encoding related headers (e.g. for chunked
-    * encoding) should not be included here, as they are handled by the server
-    * infrastructure.
+  /** Headers related to the body. Typically this includes Content-Type.
+   *
+    * Note however that transfer-encoding related headers (e.g. Content-Length,
+    * or chunked encoding) should not be included here, as they are handled by
+    * the server infrastructure.
     */
   def headers: Seq[(String, String)]
+
+  def contentLength: Option[Long]
 
 object Data:
 
@@ -75,9 +77,10 @@ object Data:
 
       override def headers: Seq[(String, String)] =
         Seq(
-          "Content-Length" -> bytes.length.toString,
           "Content-Type" -> "text/plain; charset=UTF-8"
         )
+
+      def contentLength: Option[Long] = Some(bytes.length.toLong)
 
   given numberAsData[N <: Number]: Conversion[N, Data] with
     def apply(a: N): Data = stringAsData(a.toString)
@@ -89,6 +92,7 @@ object Data:
     def apply(a: Unit): Data = new Data:
       override def write(out: java.io.OutputStream): Unit = ()
       override def headers: Seq[(String, String)] = Seq()
+      def contentLength: Option[Long] = Some(0L)
 
   given genyAsData: Conversion[geny.Writable, Data] with
     def apply(a: geny.Writable): Data = new Data:
@@ -96,10 +100,9 @@ object Data:
         a.writeBytesTo(out)
 
       override def headers: Seq[(String, String)] =
-        a.httpContentType.map(ct => "Content-Type" -> ct).toSeq ++
-          a.contentLength
-            .map(len => "Content-Length" -> len.toString)
-            .toSeq
+        a.httpContentType.map(ct => "Content-Type" -> ct).toSeq
+
+      def contentLength: Option[Long] = a.contentLength
 
   // Geny uses Scala 2, so we provide an implicit class for conversions
   implicit class GenyAsDataCompat[A](a: A)(implicit f: A => geny.Writable)
@@ -109,10 +112,9 @@ object Data:
       writable.writeBytesTo(out)
 
     override def headers: Seq[(String, String)] =
-      writable.httpContentType.map(ct => "Content-Type" -> ct).toSeq ++
-        writable.contentLength
-          .map(len => "Content-Length" -> len.toString)
-          .toSeq
+      writable.httpContentType.map(ct => "Content-Type" -> ct).toSeq
+
+    def contentLength: Option[Long] = writable.contentLength
 
 // object Response:
 
