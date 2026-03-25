@@ -22,7 +22,7 @@ object FormParser:
 
   private inline def decodeUrl(s: String): String =
     try
-      java.net.URLDecoder.decode(s, UTF_8)
+      java.net.URLDecoder.decode(s, "UTF-8")
     catch
       case e: IllegalArgumentException =>
         throw new InvalidFormEncodingException(s"Invalid URL encoding")

@@ -1,27 +1,7 @@
 package keg.transport
 
 import io.undertow
-
-import keg.main.WebAppUtil
 import keg.model.{Request, Response, WebResponse, WsResponse}
-import keg.main.Listener
-
-class UndertowTransportBuilder extends TransportBuilder:
-  override type TransportImpl = UndertowTransport
-
-  private var builder: undertow.Undertow.Builder = undertow.Undertow.builder()
-
-  def setUndertowBuilder(builder: undertow.Undertow.Builder): UndertowTransportBuilder =
-    this.builder = builder
-    this
-
-  override def build(
-    listeners: Seq[keg.main.Listener],
-    handler: Request => WebResponse,
-    log: String => Unit
-  ): UndertowTransport =
-    new UndertowTransport(builder, listeners, handler, log)
-
 
 object UndertowTransport:
 
@@ -53,10 +33,10 @@ object UndertowTransport:
       s"$before::$after"
 
 class UndertowTransport(
-  builder: undertow.Undertow.Builder,
-  listeners: Seq[keg.main.Listener],
+  listeners: Seq[Listener],
   fn: Request => WebResponse,
-  log: String => Unit
+  log: String => Unit,
+  builder: undertow.Undertow.Builder = undertow.Undertow.builder()
 ) extends Transport:
 
   private given castorContext: castor.Context = castor.Context.Simple(
@@ -228,17 +208,17 @@ class UndertowTransport(
   def start(): Unit =
     for listener <- listeners do
       listener match
-        case keg.main.Listener.Http(host, port) =>
+        case Listener.Http(host, port) =>
           builder.addHttpListener(port, host)
         case Listener.Https(host, port, key, cert) =>
-          val sslContext = keg.main.Util.mkSslContext(key, cert)
+          val sslContext = Platform.mkSslContext(key, cert)
           builder.addHttpsListener(port, host, sslContext)
 
     server = builder.setHandler(undertow.server.handlers.BlockingHandler(handler)).build()
     server.start()
 
-  def getListeners: Seq[keg.main.Listener] =
-    val ls = collection.mutable.ListBuffer.empty[keg.main.Listener]
+  def getListeners: Seq[Listener] =
+    val ls = collection.mutable.ListBuffer.empty[Listener]
 
     server.getListenerInfo().forEach: info =>
       val address = info.getAddress().asInstanceOf[java.net.InetSocketAddress]
@@ -249,9 +229,9 @@ class UndertowTransport(
 
       info.getProtcol() match
         case "http" =>
-          ls += keg.main.Listener.Http(compact, address.getPort)
+          ls += Listener.Http(compact, address.getPort)
         case "https" =>
-          ls += keg.main.Listener.Https(compact, address.getPort, "", "") // TODO: get cert/key from Undertow if possible
+          ls += Listener.Https(compact, address.getPort, "", "") // TODO: get cert/key from Undertow if possible
         case other =>
           log(s"Unknown protocol $other for listener on ${compact}:${address.getPort}, skipping")
 

@@ -4,20 +4,16 @@ import mill.scalalib.*
 
 
 object thirdparty:
-
-  val slf4jSimple = mvn"org.slf4j:slf4j-simple:2.0.9"
-  val upickle = mvn"com.lihaoyi::upickle:4.4.1"
-
-  val undertow = mvn"io.undertow:undertow-core:2.3.20.Final"
-
-  val castor = mvn"com.lihaoyi::castor::0.3.0"
-  val ustats = mvn"io.crashbox::ustats:0.7.0"
-
-  val utest = mvn"com.lihaoyi::utest::0.9.5"
+  val caffeine = mvn"com.github.ben-manes.caffeine:caffeine:3.1.8"
+  val castor = mvn"com.lihaoyi::castor::0.3.0-8-189e2c"
+  val geny = mvn"com.lihaoyi::geny::1.1.1"
+  val nativeCrypto = mvn"com.github.lolgab::scala-native-crypto::0.3.0"
+  val nativeTime = mvn"io.github.cquiroz::scala-java-time::2.6.0"
+  val oslib = mvn"com.lihaoyi::os-lib:0.9.1"
   val requests = mvn"com.lihaoyi::requests:0.9.0"
   val scalatags = mvn"com.lihaoyi::scalatags:0.13.1"
-
-  val caffeine = mvn"com.github.ben-manes.caffeine:caffeine:3.1.8"
-
-  val geny = mvn"com.lihaoyi::geny::1.1.1"
-  val oslib = mvn"com.lihaoyi::os-lib:0.9.1"
+  val slf4jSimple = mvn"org.slf4j:slf4j-simple:2.0.9"
+  val undertow = mvn"io.undertow:undertow-core:2.3.20.Final"
+  val upickle = mvn"com.lihaoyi::upickle::4.4.1"
+  val ustats = mvn"io.crashbox::ustats:0.7.0"
+  val utest = mvn"com.lihaoyi::utest::0.9.5"

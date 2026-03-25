@@ -1,16 +1,20 @@
 package keg.util
 
 object log:
-  val logger = org.slf4j.LoggerFactory.getLogger("keg")
+  // val logger = org.slf4j.LoggerFactory.getLogger("keg")
 
   def info(msg: String)(using pos: Pos): Unit =
-    logger.info(s"[${pos.function}(${pos.file}:${pos.line}:${pos.column})] $msg")
+    // logger.info(s"[${pos.function}(${pos.file}:${pos.line}:${pos.column})] $msg")
+    println(s"[${pos.function}(${pos.file}:${pos.line}:${pos.column})] $msg")
 
   def warn(msg: String)(using pos: Pos): Unit =
-    logger.warn(s"[${pos.function}(${pos.file}:${pos.line}:${pos.column})] $msg")
+    // logger.warn(s"[${pos.function}(${pos.file}:${pos.line}:${pos.column})] $msg")
+    println(s"[${pos.function}(${pos.file}:${pos.line}:${pos.column})] $msg")
 
   def error(msg: String, err: Throwable = null)(using pos: Pos): Unit =
-    logger.error(s"[${pos.function}(${pos.file}:${pos.line}:${pos.column})] $msg", err)
+    // logger.error(s"[${pos.function}(${pos.file}:${pos.line}:${pos.column})] $msg", err)
+    println(s"[${pos.function}(${pos.file}:${pos.line}:${pos.column})] $msg")
+    if (err != null) err.printStackTrace()
 
 import scala.quoted.Expr
 import scala.quoted.Quotes

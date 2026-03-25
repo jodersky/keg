@@ -3,82 +3,93 @@
 
 import mill.*, scalalib.*, scalanativelib.*, scalafmt.*
 import build.thirdparty
-import mill.api.Task.Simple
 
 val scala3 = "3.8.2"
 val scalaNative = "0.5.10"
 
-object keg extends ScalaModule with ScalafmtModule:
+trait KegMultiModule extends ScalaModule:
   def scalaVersion = scala3
   def scalacOptions = Seq("-deprecation", "-feature", "-unchecked", "-encoding", "utf8", "-preview")
-
-  def mvnDeps = Seq(
-    thirdparty.slf4jSimple,
-    thirdparty.upickle,
-    thirdparty.undertow,
-    thirdparty.castor,
-    thirdparty.ustats,
-    thirdparty.caffeine
+  def moduleDir = super.moduleDir / os.up
+  def sources = Task.Sources(
+    moduleDir / "src",
+    moduleDir / "src-jvm",
   )
 
-  object test extends ScalaTests:
-    def testFramework = "utest.runner.Framework"
-    def mvnDeps = Seq(
-      thirdparty.utest,
-      thirdparty.requests,
-      thirdparty.oslib
+trait KegTestModule extends TestModule:
+  def testFramework = "utest.runner.Framework"
+  def mvnDeps = Seq(thirdparty.utest)
+
+trait KegMultiNativeModule extends KegMultiModule with ScalaNativeModule:
+  def scalaNativeVersion = scalaNative
+  def sources = Task.Sources(
+    moduleDir / "src",
+    moduleDir / "src-native",
+  )
+
+object keg extends Module:
+  val commonDeps = Seq(
+    thirdparty.geny,
+    thirdparty.castor,
+    thirdparty.upickle
+  )
+
+  object jvm extends KegMultiModule:
+    def moduleDeps = Seq(keg.forms.jvm)
+    def mvnDeps = commonDeps ++ Seq(
+      thirdparty.slf4jSimple,
+      thirdparty.undertow
     )
-
-  def moduleDeps = Seq(forms)
-
-  object forms extends ScalaModule with ScalafmtModule:
-    def scalaVersion = scala3
-    def scalacOptions = Seq("-deprecation", "-feature", "-unchecked", "-encoding", "utf8", "-preview")
-
-     object test extends ScalaTests:
-      def testFramework = "utest.runner.Framework"
-      def mvnDeps = Seq(thirdparty.utest)
-
-// object `keg-forms` extends ScalaModule with ScalafmtModule:
-//   def scalaVersion = scala3
-//   def scalacOptions = Seq("-deprecation", "-feature", "-unchecked", "-encoding", "utf8", "-preview")
-
-//   object test extends ScalaTests:
-//     def testFramework = "utest.runner.Framework"
-//     def mvnDeps = Seq(thirdparty.utest)
-
-// object `keg-forms2` extends ScalaModule with ScalafmtModule:
-//   def scalaVersion = scala3
-//   def scalacOptions = Seq("-deprecation", "-feature", "-unchecked", "-encoding", "utf8", "-preview")
-
-//   object test extends ScalaTests:
-//     def testFramework = "utest.runner.Framework"
-//     def mvnDeps = Seq(thirdparty.utest)
-
-object uhttp extends Module:
-
-  trait UhttpModule extends ScalaModule:
-    def scalaVersion = scala3
-    def scalacOptions = Seq("-deprecation", "-feature", "-unchecked", "-encoding", "utf8", "-preview")
-
-    def mvnDeps = Seq(
-      thirdparty.geny
+    object test extends ScalaTests with KegTestModule:
+      def mvnDeps = super.mvnDeps() ++ Seq(
+        thirdparty.requests,
+        thirdparty.oslib
+      )
+  object native extends KegMultiNativeModule:
+    def moduleDeps = Seq(keg.forms.native)
+    def mvnDeps = commonDeps ++ Seq(
+      thirdparty.nativeCrypto,
+      thirdparty.nativeTime
     )
+    object test extends ScalaNativeTests with KegTestModule
 
-    def moduleDir = super.moduleDir / os.up
-  object jvm extends UhttpModule:
-    object test extends ScalaTests:
+  // As of now we don't have a good way to actually test uhttp in scalanative
+  // with regular unit tests. The problem is that as of this writing there is
+  // no good HTTP client for scalanative. Hence, we use this test, where the
+  // server is compiled ahead of time with scalanative, and then tested with a
+  // regular JVM test.
+  object crosstest extends Module:
+    object server extends ScalaNativeModule:
+      def scalaVersion = scala3
+      def scalaNativeVersion = scalaNative
+      def moduleDeps = Seq(keg.native)
+    object test extends ScalaModule with TestModule:
+      def scalaVersion = scala3
+      def forkEnv = Map("SERVER_EXECUTABLE" -> crosstest.server.nativeLink().path.toString)
       def testFramework = "utest.runner.Framework"
-      def mvnDeps = Seq(thirdparty.utest)
-  object native extends UhttpModule with ScalaNativeModule:
-    def scalaNativeVersion = scalaNative
-    object test extends ScalaNativeTests:
-      def testFramework = "utest.runner.Framework"
-      def mvnDeps = Seq(thirdparty.utest)
+      def mvnDeps = Seq(
+        thirdparty.utest,
+        thirdparty.requests,
+        thirdparty.oslib
+      )
+
+  object forms extends Module:
+    object jvm extends KegMultiModule:
+      object test extends ScalaTests with KegTestModule
+    object native extends KegMultiNativeModule:
+      object test extends ScalaNativeTests with KegTestModule
+
+  object extras extends ScalaModule:
+    def scalaVersion = scala3
+    def moduleDeps = Seq(keg.jvm)
+    def mvnDeps = Seq(
+      thirdparty.ustats,
+      thirdparty.caffeine
+    )
 
 object sandbox extends ScalaModule:
   def scalaVersion = scala3
-  def moduleDeps = Seq(keg)
+  def moduleDeps = Seq(keg.jvm)
 
   def scalacOptions = Seq("-Xprint:postInlining", "-feature")
 
@@ -97,7 +108,7 @@ object sandbox extends ScalaModule:
 object examples extends Module:
   trait ExampleModule extends ScalaModule:
     def scalaVersion = scala3
-    def moduleDeps = Seq(keg)
+    def moduleDeps = Seq(keg.jvm)
     def scalacOptions = Seq("-explain-cyclic")
 
     object test extends ScalaTests:
@@ -109,7 +120,8 @@ object examples extends Module:
 
   object oauth2 extends ExampleModule:
     def mvnDeps = super.mvnDeps() ++ Seq(
-      thirdparty.scalatags
+      thirdparty.scalatags,
+      thirdparty.caffeine
     )
   object endpoints extends ExampleModule
 

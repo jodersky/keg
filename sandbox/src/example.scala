@@ -158,6 +158,9 @@ def foo(n: Int, x: String) =
   // println(s"Received n: $n, x: $x")
   s"Echo: n=$n, x=$x"
 
+@keg.get("/")
+def index() = "hello, world"
+
 val plain = keg.Endpoint(
   selector = keg.EndpointSelector.Simple("/foo", Seq("GET")),
   invoke = (req: keg.model.Request) => keg.EndpointResult.Success(
@@ -171,10 +174,10 @@ val routes: keg.model.Routes = keg.routes()
 
 @main()
 def main() =
-  val key = java.nio.file.Files.readString(java.nio.file.Paths.get("key.pem"))
-  val cert = java.nio.file.Files.readString(java.nio.file.Paths.get("cert.pem"))
+  // val key = java.nio.file.Files.readString(java.nio.file.Paths.get("key.pem"))
+  // val cert = java.nio.file.Files.readString(java.nio.file.Paths.get("cert.pem"))
 
-  val server = keg.main.Server(
+  val server = keg.Server(
     routes.endpoints ++ Seq(plain),
     // debugMode = true,
     interceptors = Seq(
@@ -182,8 +185,9 @@ def main() =
       keg.main.TimingInterceptor()
     ),
     listeners = Seq(
-      keg.main.Listener.Http("::1", 8081),
-      keg.main.Listener.Https("::1", 8443, key, cert)
+      keg.Listener.Http("::1", 8000),
+      keg.Listener.Http("::1", 8081),
+      // keg.Listener.Https("::1", 8443, key, cert)
     ),
     // transportBuilder = new keg.transport.uhttp.UhttpTransportBuilder
   )

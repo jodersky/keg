@@ -2,7 +2,7 @@ import utest.*
 
 import keg.transport.uhttp
 
-object ParserTest extends TestSuite:
+object UhttpParserTest extends TestSuite:
 
   def mkStream(s: String) = new java.io.ByteArrayInputStream(s.getBytes("UTF-8"))
 

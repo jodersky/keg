@@ -66,7 +66,7 @@ object TlsTest extends TestSuite:
 
         val serverCert = os.proc("openssl", "x509", "-req", "-in", "/dev/stdin", "-CA", tmp / "ca-cert.pem", "-CAkey", tmp / "ca-key.pem", "-copy_extensions", "copyall", "-days", "3650").call(stdin = serverCsr).out.text().trim()
 
-        val sslContext = keg.main.Util.mkSslContext(trustedCa = caCert)
+        val sslContext = keg.transport.Platform.mkSslContext(trustedCa = caCert)
         withServer(serverKey, serverCert): url =>
           val response = requests.get(s"$url/hello", sslContext = sslContext)
           assert(response.statusCode == 200)

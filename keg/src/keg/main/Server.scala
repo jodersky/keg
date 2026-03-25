@@ -1,6 +1,5 @@
 package keg.main
 
-import io.undertow as undertow
 import keg.model.Request
 import keg.model.Response
 import keg.model.WebResponse
@@ -15,6 +14,7 @@ import keg.util.log
 import keg.model.Recovery
 import keg.main.DispatchTrie.DispatchLookup
 import scala.compiletime.ops.int
+import keg.util.Util
 
 case class EndpointAbortedException(
   code: Int,
@@ -22,20 +22,6 @@ case class EndpointAbortedException(
   pos: keg.util.Pos,
   message: String,
 ) extends Exception(message)
-
-enum Listener:
-  case Http(host: String, port: Int)
-  case Https(host: String, port: Int, key: String, cert: String)
-
-  def asUrl: String = this match
-    case Http(host, port) => s"http://${Listener.ipAsUrl(host)}:$port"
-    case Https(host, port, _, _) => s"https://${Listener.ipAsUrl(host)}:$port"
-
-object Listener:
-  private def ipAsUrl(addr: String): String =
-    if addr.contains(":") then s"[$addr]"
-    else addr
-
 
 /** A simple HTTP server using Undertow.
   *
@@ -63,7 +49,7 @@ object Listener:
   */
 case class Server(
     val endpoints: Seq[Endpoint | Recovery],
-    listeners: Seq[Listener] = Seq(Listener.Http("::", 8080)),
+    listeners: Seq[keg.transport.Listener] = Seq(keg.transport.Listener.Http("::", 8080)),
     debugMode: Boolean = Server.debugFromEnv,
     secrets: Seq[Secret] = Seq.empty,
     sessionMaxAgeSeconds: Int = 3600,
@@ -72,7 +58,7 @@ case class Server(
     csrfAllowedOrigins: Set[String] = Set.empty,
     interceptors: Seq[Interceptor] = Seq.empty,
     debugInterceptors: Seq[Interceptor] = Seq(Reloader),
-    transportBuilder: keg.transport.TransportBuilder = new keg.transport.UndertowTransportBuilder()
+    transportBuilder: keg.transport.Transport.BuilderFunc = keg.transport.Platform.mkDefaultTransport
 ):
   log.info(s"Debug mode: $debugMode")
   log.info(s"Initializing Keg Server with ${endpoints.size} endpoints")
@@ -85,7 +71,6 @@ case class Server(
     else
       log.warn("No secrets provided for server, using random secret. This means that sessions and flash will not be valid across server restarts, and any existing cookies will be invalidated!")
       Seq(Secret.random())
-
 
   private def mkInvoke(ep: Endpoint): Request => WebResponse = (req: Request) =>
     if WebAppUtil.checkCsrf(req.method, req.headers, csrfAllowedOrigins) then
@@ -108,23 +93,23 @@ case class Server(
       val fn = (req: Request, ep: Endpoint, failure: EndpointResult.Failure) =>
         failure match
           case EndpointResult.Failure.ParamAbort(param, code, message) =>
-            Response[keg.Data](s"Parameter '$param' is invalid: $message", code)
+            Response[keg.model.Data](s"Parameter '$param' is invalid: $message", code)
           case EndpointResult.Failure.MethodAbort(code, message) =>
-            Response[keg.Data](message, code)
+            Response[keg.model.Data](message, code)
           case EndpointResult.Failure.Exception(throwable) =>
             log.error(s"Error in endpoint ${ep.meta} for request ${req.method} ${req.path}", throwable)
-            Response[keg.Data]("Internal Server Error " + throwable.getMessage, 500)
+            Response[keg.model.Data]("Internal Server Error " + throwable.getMessage, 500)
       Recovery(fn)
     else
       val fn = (req: Request, ep: Endpoint, failure: EndpointResult.Failure) =>
         failure match
           case EndpointResult.Failure.ParamAbort(_, code, _) =>
-            Response[keg.Data]("Bad Request", code)
+            Response[keg.model.Data]("Bad Request", code)
           case EndpointResult.Failure.MethodAbort(code, message) =>
-            Response[keg.Data](message, code)
+            Response[keg.model.Data](message, code)
           case EndpointResult.Failure.Exception(throwable) =>
             log.error(s"Error in endpoint ${ep.meta} for request ${req.method} ${req.path}", throwable)
-            Response[keg.Data]("Internal Server Error", 500)
+            Response[keg.model.Data]("Internal Server Error", 500)
       Recovery(fn)
 
   private val activeInterceptors =
@@ -279,11 +264,7 @@ case class Server(
 
     response
 
-  private val transport = transportBuilder.build(
-    listeners,
-    handlerFunc,
-    log.info(_)
-  )
+  private val transport = transportBuilder(listeners, handlerFunc, log.info(_))
 
   def start(): Unit =
     if activeInterceptors.nonEmpty then
@@ -307,8 +288,8 @@ case class Server(
       )
 
   def serverPort() = transport.getListeners.headOption match
-    case Some(Listener.Http(_, port)) => port
-    case Some(Listener.Https(_, port, _, _)) => port
+    case Some(keg.transport.Listener.Http(_, port)) => port
+    case Some(keg.transport.Listener.Https(_, port, _, _)) => port
     case None => throw new Exception("Server is not listening on any ports")
 
   def awaitTermination(): Unit =

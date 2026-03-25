@@ -1,5 +1,5 @@
 import utest.*
-import keg.main.Util
+import keg.util.Util
 
 object UtilTest extends TestSuite:
   val tests = Tests:

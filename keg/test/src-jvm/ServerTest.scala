@@ -19,7 +19,7 @@ object ServerTest extends TestSuite:
 
       val server = keg.Server(
         endpoints = endpoints,
-        listeners = Seq(keg.main.Listener.Http("::1", 8081)),
+        listeners = Seq(keg.transport.Listener.Http("::1", 8081)),
       )
       server.start()
       try
@@ -45,8 +45,8 @@ object ServerTest extends TestSuite:
 
       val server = keg.Server(
         endpoints = endpoints,
-        listeners = Seq(keg.main.Listener.Http("::1", 8081)),
-        transportBuilder = new keg.transport.uhttp.UhttpTransportBuilder
+        listeners = Seq(keg.transport.Listener.Http("::1", 8081)),
+        transportBuilder = (listeners, handler, log) => keg.transport.uhttp.UhttpTransport(listeners, handler, log)
       )
       server.start()
       try
@@ -60,7 +60,7 @@ object ServerTest extends TestSuite:
     test("not found"):
       val server = keg.Server(
         endpoints = Seq(),
-        listeners = Seq(keg.main.Listener.Http("::1", 8081)),
+        listeners = Seq(keg.transport.Listener.Http("::1", 8081)),
       )
       server.start()
       try
@@ -84,7 +84,7 @@ object ServerTest extends TestSuite:
       )
       val server = keg.Server(
         endpoints = endpoints,
-        listeners = Seq(keg.main.Listener.Http("::1", 8081)),
+        listeners = Seq(keg.transport.Listener.Http("::1", 8081)),
       )
       server.start()
       try
@@ -123,7 +123,7 @@ object ServerTest extends TestSuite:
 
       val server = keg.Server(
         endpoints = endpoints,
-        listeners = Seq(keg.main.Listener.Http("::1", 8081)),
+        listeners = Seq(keg.transport.Listener.Http("::1", 8081)),
       )
       server.start()
       try

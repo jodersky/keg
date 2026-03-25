@@ -1,9 +1,8 @@
 package keg.transport.uhttp
 
 import keg.transport.Transport
-import keg.transport.TransportBuilder
 import keg.model.{Request, Response, WebResponse, WsResponse}
-import keg.main.Listener
+import keg.transport.Listener
 
 case class Limits(
   maxMethodLength: Int = 32,
@@ -13,32 +12,20 @@ case class Limits(
   maxHeaders: Int = 100
 )
 
-class UhttpTransportBuilder extends TransportBuilder:
-  override type TransportImpl = UhttpTransport
-
-  var limits: Limits = Limits()
-  var workerPool = java.util.concurrent.Executors.newFixedThreadPool(4)
-
-  override def build(
-    listeners: Seq[Listener],
-    handler: Request => WebResponse,
-    log: String => Unit
-  ): UhttpTransport =
-    new UhttpTransport(limits, workerPool, listeners, handler, log)
-
-/** A simple HTTP/1.1 server implementation using plain java.net.* classes, with
-  * no external dependencies. It supports both HTTP and HTTPS, but does not
-  * support WebSockets or HTTP/2.
+/** An experimental HTTP/1.1 server implementation using plain java.net.*
+  * classes, with no external dependencies. It supports both HTTP and HTTPS, but
+  * does not support WebSockets or HTTP/2.
   *
   * It is available under ScalaNative too, thus it is well-suited for use in
-  * short-lived processes such as CLI tools.
+  * short-lived processes such as CLI tools. Note however that HTTPS support is
+  * not available under ScalaNative.
   */
 class UhttpTransport(
-  limits: Limits,
-  workerPool: java.util.concurrent.ExecutorService,
   listeners: Seq[Listener],
   handler: Request => WebResponse,
-  log: String => Unit
+  log: String => Unit,
+  limits: Limits = Limits(),
+  workerPool: java.util.concurrent.ExecutorService = java.util.concurrent.Executors.newCachedThreadPool()
 ) extends Transport:
   private var serverSockets: Seq[(Listener, java.net.ServerSocket)] = Seq.empty
 
@@ -47,12 +34,16 @@ class UhttpTransport(
       listener match
         case Listener.Http(host, port) =>
           log(s"Creating HTTP listener on $host:$port")
-          (listener, new java.net.ServerSocket(port, 50, java.net.InetAddress.getByName(host)))
+          val s = new java.net.ServerSocket()
+          s.setReuseAddress(true)
+          s.bind(new java.net.InetSocketAddress(host, port), 50)
+          (listener, s)
         case Listener.Https(host, port, key, cert) =>
           log(s"Creating HTTPS listener on $host:$port with cert $cert and key $key")
-          val sslContext = keg.main.Util.mkSslContext(key, cert)
-          val serverSocketFactory = sslContext.getServerSocketFactory
-          (listener, serverSocketFactory.createServerSocket(port, 50, java.net.InetAddress.getByName(host)))
+          val s = keg.transport.Platform.makeSslSocket(key, cert)
+          s.setReuseAddress(true)
+          s.bind(new java.net.InetSocketAddress(host, port), 50)
+          (listener, s)
 
     for (_, socket) <- serverSockets do
       log(s"Listening on ${socket.getLocalSocketAddress}")
@@ -93,17 +84,39 @@ class UhttpTransport(
     ) match
       case ParseResult.Ok(head) =>
 
+        // wrap the input stream in a way that it ends after reading the request
+        // body, and that closing it doesn't close the underlying socket input
+        // stream (since we might want to keep the connection alive for multiple requests)
+        val contentLength = head.headers.get("content-length").flatMap(_.headOption).flatMap(cl => scala.util.Try(cl.toInt).toOption).getOrElse(0)
+        var remaining = contentLength
+        val bodyStream = new java.io.FilterInputStream(input):
+          override def read(): Int =
+            if remaining <= 0 then -1
+            else
+              val byte = super.read()
+              if byte != -1 then remaining -= 1
+              byte
+          override def read(b: Array[Byte], off: Int, len: Int): Int =
+            if remaining <= 0 then -1
+            else
+              val bytesRead = super.read(b, off, math.min(len, remaining))
+              if bytesRead > 0 then remaining -= bytesRead
+              bytesRead
+          override def close(): Unit =
+            // don't close the underlying stream, since we might want to read the next request on the same connection
+            ()
+
         val request = Request(
           method = head.method,
           path = head.uri.split('?').headOption.getOrElse(""),
-          queryParams = keg.util.MultiDict.empty, // TODO: parse query params from URI
+          queryParams = keg.util.Util.decodeQueryString(head.uri.split('?').drop(1).headOption.getOrElse("")),
           headers = keg.util.MultiDict(head.headers),
           pathParams = Map.empty,
           remainingPathSegments = IndexedSeq.empty,
           cookies = head.headers.get("cookie").map(cs => parseCookieHeaders(cs)).getOrElse(Map.empty),
           session = Map.empty,
           flash = Map.empty,
-          getBody = () => input,
+          getBody = () => bodyStream,
           remoteIp = socket.getInetAddress
         )
         val response: Response[keg.model.Data] =
