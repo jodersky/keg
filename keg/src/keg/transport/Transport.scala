@@ -48,6 +48,5 @@ object Transport:
     *   will be handled by the application layer)
     * - when serializing a Response: session, flash should not be used (they
     *   will have been converted to cookies by the application layer)
-    *
-  */
+    */
   type BuilderFunc = (Seq[Listener], Request => WebResponse, String => Unit) => Transport

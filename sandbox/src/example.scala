@@ -182,7 +182,7 @@ def main() =
     // debugMode = true,
     interceptors = Seq(
       // keg.main.RateLimiter(),
-      keg.main.TimingInterceptor()
+      keg.extras.TimingInterceptor()
     ),
     listeners = Seq(
       keg.Listener.Http("::1", 8000),

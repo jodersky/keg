@@ -89,7 +89,7 @@ object keg extends Module:
 
 object sandbox extends ScalaModule:
   def scalaVersion = scala3
-  def moduleDeps = Seq(keg.jvm)
+  def moduleDeps = Seq(keg.jvm, keg.extras)
 
   def scalacOptions = Seq("-Xprint:postInlining", "-feature")
 

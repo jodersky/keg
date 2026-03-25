@@ -34,7 +34,7 @@ object WebAppUtilTest extends TestSuite:
         assert(!WebAppUtil.checkCsrf("POST", MultiDict(Map("origin" -> List("not a valid uri"), "host" -> List("example.com"))), Set.empty))
 
     test("signMap and verifyMap"):
-      val secret = Secret.random()
+      val secret = Secret.check(Secret.random())
       val futureTime = System.currentTimeMillis() / 1000L + 3600
       val pastTime = System.currentTimeMillis() / 1000L - 100
 
@@ -70,7 +70,7 @@ object WebAppUtilTest extends TestSuite:
       test("rejects tampered payload"):
         val payload = Map("user" -> "dave")
         val signed = WebAppUtil.signMap(payload, futureTime, secret)
-        val tampered = WebAppUtil.signMap(Map("user" -> "eve"), futureTime, Secret.random())
+        val tampered = WebAppUtil.signMap(Map("user" -> "eve"), futureTime, Secret.check(Secret.random()))
         val verified = WebAppUtil.verifyMap(tampered, List(secret))
         assert(verified.isEmpty)
 
@@ -85,13 +85,13 @@ object WebAppUtilTest extends TestSuite:
       test("rejects wrong secret"):
         val payload = Map("user" -> "eve")
         val signed = WebAppUtil.signMap(payload, futureTime, secret)
-        val verified = WebAppUtil.verifyMap(signed, List(Secret.random()))
+        val verified = WebAppUtil.verifyMap(signed, List(Secret.check(Secret.random())))
         assert(verified.isEmpty)
 
       test("verifies with multiple secrets (rotation)"):
         val payload = Map("user" -> "frank")
-        val oldSecret = Secret.random()
-        val newSecret = Secret.random()
+        val oldSecret = Secret.check(Secret.random())
+        val newSecret = Secret.check(Secret.random())
 
         val signedWithOld = WebAppUtil.signMap(payload, futureTime, oldSecret)
         val verifiedWithBoth = WebAppUtil.verifyMap(signedWithOld, List(newSecret, oldSecret))

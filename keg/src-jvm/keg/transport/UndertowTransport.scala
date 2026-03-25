@@ -5,6 +5,10 @@ import keg.model.{Request, Response, WebResponse, WsResponse}
 
 object UndertowTransport:
 
+  // The XNIO library used by Undertow does logging in static initializers,
+  // so we need to set this system property before anything else is loaded.
+  System.setProperty("org.jboss.logging.provider", "slf4j")
+
   private def compactIpv6(addr: java.net.Inet6Address): String =
     val bytes = addr.getAddress() // 16 bytes, big-endian
     val hextets = Array.tabulate(8)(i => ((bytes(2 * i) & 0xff) << 8) | (bytes(2 * i + 1) & 0xff))

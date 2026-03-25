@@ -1,6 +1,7 @@
 package keg.main
 
 import keg.util.MultiDict
+import java.nio.charset.StandardCharsets.UTF_8
 
 // utilities for classic web applications (e.g. CSRF protection, cookie signing)
 object WebAppUtil:
@@ -82,7 +83,7 @@ object WebAppUtil:
   def signMap(
       payload: Map[String, String],
       expires: Long,
-      secret: Secret
+      secret: Array[Byte]
   ): String =
     val b64 = java.util.Base64.getUrlEncoder.withoutPadding()
 
@@ -90,32 +91,16 @@ object WebAppUtil:
     val kvs = payload.iterator
     if kvs.hasNext then
       val (key, value) = kvs.next()
-      buffer.append(
-        b64.encodeToString(
-          key.getBytes(java.nio.charset.StandardCharsets.UTF_8)
-        )
-      )
+      buffer.append(b64.encodeToString(key.getBytes(UTF_8)))
       buffer.append("|")
-      buffer.append(
-        b64.encodeToString(
-          value.getBytes(java.nio.charset.StandardCharsets.UTF_8)
-        )
-      )
+      buffer.append(b64.encodeToString(value.getBytes(UTF_8)))
 
       while kvs.hasNext do
         buffer.append("|")
         val (key, value) = kvs.next()
-        buffer.append(
-          b64.encodeToString(
-            key.getBytes(java.nio.charset.StandardCharsets.UTF_8)
-          )
-        )
+        buffer.append(b64.encodeToString(key.getBytes(UTF_8)))
         buffer.append("|")
-        buffer.append(
-          b64.encodeToString(
-            value.getBytes(java.nio.charset.StandardCharsets.UTF_8)
-          )
-        )
+        buffer.append(b64.encodeToString(value.getBytes(UTF_8)))
 
     buffer.append(".")
     buffer.append(expires.toString)
@@ -123,12 +108,12 @@ object WebAppUtil:
     val toSign = buffer.toString()
     val hmac = javax.crypto.Mac.getInstance("HmacSHA256")
     val keySpec = new javax.crypto.spec.SecretKeySpec(
-      secret.bytes,
+      secret,
       "HmacSHA256"
     )
     hmac.init(keySpec)
     val rawHmac =
-      hmac.doFinal(toSign.getBytes(java.nio.charset.StandardCharsets.UTF_8))
+      hmac.doFinal(toSign.getBytes(UTF_8))
     val signature =
       java.util.Base64.getUrlEncoder.withoutPadding().encodeToString(rawHmac)
     s"$toSign.$signature"
@@ -143,7 +128,7 @@ object WebAppUtil:
     * @param secrets The secrets to use for verification
     * @return The original map if the signature is valid and not expired, or an empty map otherwise.
     */
-  def verifyMap(data: String, secrets: Iterable[Secret]): Map[String, String] =
+  def verifyMap(data: String, secrets: Iterable[Array[Byte]]): Map[String, String] =
     val b64 = java.util.Base64.getUrlDecoder
     val parts = data.split('.')
     if parts.length != 3 then return Map.empty
@@ -163,12 +148,12 @@ object WebAppUtil:
       val toVerify = s"$payload.$expires"
       val hmac = javax.crypto.Mac.getInstance("HmacSHA256")
       val keySpec = new javax.crypto.spec.SecretKeySpec(
-        secret.bytes,
+        secret,
         "HmacSHA256"
       )
       hmac.init(keySpec)
       val rawHmac =
-        hmac.doFinal(toVerify.getBytes(java.nio.charset.StandardCharsets.UTF_8))
+        hmac.doFinal(toVerify.getBytes(UTF_8))
       val expectedSignature = java.util.Base64.getUrlEncoder
         .withoutPadding()
         .encodeToString(rawHmac)
@@ -180,14 +165,8 @@ object WebAppUtil:
         var i = 0
         while i < kvParts.length do
           try
-            val key = new String(
-              b64.decode(kvParts(i)),
-              java.nio.charset.StandardCharsets.UTF_8
-            )
-            val value = new String(
-              b64.decode(kvParts(i + 1)),
-              java.nio.charset.StandardCharsets.UTF_8
-            )
+            val key = new String(b64.decode(kvParts(i)), UTF_8)
+            val value = new String(b64.decode(kvParts(i + 1)), UTF_8)
             result.put(key, value)
           catch case _: Exception => return Map.empty
           i += 2

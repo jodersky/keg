@@ -13,15 +13,7 @@ import keg.model.EndpointResult
 import keg.util.log
 import keg.model.Recovery
 import keg.main.DispatchTrie.DispatchLookup
-import scala.compiletime.ops.int
 import keg.util.Util
-
-case class EndpointAbortedException(
-  code: Int,
-  endpoint: keg.model.Endpoint,
-  pos: keg.util.Pos,
-  message: String,
-) extends Exception(message)
 
 /** A simple HTTP server using Undertow.
   *
@@ -51,7 +43,7 @@ case class Server(
     val endpoints: Seq[Endpoint | Recovery],
     listeners: Seq[keg.transport.Listener] = Seq(keg.transport.Listener.Http("::", 8080)),
     debugMode: Boolean = Server.debugFromEnv,
-    secrets: Seq[Secret] = Seq.empty,
+    secrets: Seq[String] = Seq.empty,
     sessionMaxAgeSeconds: Int = 3600,
     flashMaxAgeSeconds: Int =
       60, // flash cookies last for 1 minute, they're consumed on read anyway, so no need to last longer
@@ -63,82 +55,46 @@ case class Server(
   log.info(s"Debug mode: $debugMode")
   log.info(s"Initializing Keg Server with ${endpoints.size} endpoints")
 
-  private val runtimeSecrets =
-    if secrets.nonEmpty then secrets
+  private val runtimeSecrets: Seq[Array[Byte]] =
+    if secrets.nonEmpty then
+      secrets.map(Secret.check)
     else if debugMode then
       log.warn("No secrets provided for server in debug mode, using random persisted secret.")
-      Seq(Secret.fromTmp())
+      Seq(Secret.check(Secret.persistent()))
     else
       log.warn("No secrets provided for server, using random secret. This means that sessions and flash will not be valid across server restarts, and any existing cookies will be invalidated!")
-      Seq(Secret.random())
+      Seq(Secret.check(Secret.random()))
 
-  private def mkInvoke(ep: Endpoint): Request => WebResponse = (req: Request) =>
-    if WebAppUtil.checkCsrf(req.method, req.headers, csrfAllowedOrigins) then
-      ep.invoke(req) match
-        case EndpointResult.Success(response) => response
-        case failure: EndpointResult.Failure => recovery.invoke(req, ep, failure)
-    else
-      recovery.invoke(req, ep, EndpointResult.Failure.MethodAbort(403, "CSRF validation failed"))
-
-  private val dispatchTrie = DispatchTrie[(Endpoint, Request => WebResponse)]()
-  private val websocketDispatchTrie = DispatchTrie[(Endpoint, Request => WebResponse)]()
+  private val dispatchTrie = DispatchTrie[Endpoint]()
+  private val websocketDispatchTrie = DispatchTrie[Endpoint]()
 
   private var notFoundEndpoint: Endpoint = Server.defaultNotFoundEndpoint
-  private var notFoundFn: Request => WebResponse = mkInvoke(notFoundEndpoint)
   private var methodNotAllowedEndpoint: Endpoint = Server.defaultMethodNotAllowedEndpoint
-  private var methodNotAllowedFn: Request => WebResponse = mkInvoke(methodNotAllowedEndpoint)
 
-  private var recovery: Recovery =
-    if debugMode then
-      val fn = (req: Request, ep: Endpoint, failure: EndpointResult.Failure) =>
-        failure match
-          case EndpointResult.Failure.ParamAbort(param, code, message) =>
-            Response[keg.model.Data](s"Parameter '$param' is invalid: $message", code)
-          case EndpointResult.Failure.MethodAbort(code, message) =>
-            Response[keg.model.Data](message, code)
-          case EndpointResult.Failure.Exception(throwable) =>
-            log.error(s"Error in endpoint ${ep.meta} for request ${req.method} ${req.path}", throwable)
-            Response[keg.model.Data]("Internal Server Error " + throwable.getMessage, 500)
-      Recovery(fn)
-    else
-      val fn = (req: Request, ep: Endpoint, failure: EndpointResult.Failure) =>
-        failure match
-          case EndpointResult.Failure.ParamAbort(_, code, _) =>
-            Response[keg.model.Data]("Bad Request", code)
-          case EndpointResult.Failure.MethodAbort(code, message) =>
-            Response[keg.model.Data](message, code)
-          case EndpointResult.Failure.Exception(throwable) =>
-            log.error(s"Error in endpoint ${ep.meta} for request ${req.method} ${req.path}", throwable)
-            Response[keg.model.Data]("Internal Server Error", 500)
-      Recovery(fn)
+  private var recovery: Recovery = Server.defaultRecovery(debugMode)
 
   private val activeInterceptors =
     if debugMode then interceptors ++ debugInterceptors
     else interceptors
 
   private def addToTrie(
-    trie: DispatchTrie[(Endpoint, Request => WebResponse)],
+    trie: DispatchTrie[Endpoint],
     path: String,
     methods: Seq[String],
     endpoint: Endpoint
   ): Unit =
-    val invokeFn = mkInvoke(endpoint)
     val segs = Util.splitPath(path)
 
     for method <- methods do
-      trie.add(
-        segs,
-        method,
-        (endpoint, invokeFn)
-      ) match
+      trie.add(segs, method, endpoint) match
         case DispatchTrie.AddResult.Ok => ()
         case DispatchTrie.AddResult.MethodConflict(path, items) =>
           throw new Exception(
-            s"Method conflict when adding endpoint ${endpoint.meta} $methods $path: existing endpoints ${items.map { case (method, (ep, _)) => s"$method -> ${ep.meta}" }.mkString(", ")}"
+            s"Method conflict when adding endpoint ${endpoint.meta} $methods $path: existing endpoints ${items.map { case (method, ep) => s"$method -> ${ep.meta}" }.mkString(", ")}"
           )
         case DispatchTrie.AddResult.SubpathConflict(path, items) =>
           throw new Exception(
-            s"Subpath conflict when adding endpoint ${endpoint.meta} $methods $path: existing endpoints: ${items.values.map(_._1.meta).mkString(", ")}"
+            s"Subpath conflict when adding endpoint ${endpoint.meta} $methods $path: existing endpoints: ${items.values.map(_.meta).mkString(", ")}"
           )
 
   for endpoint <- activeInterceptors.flatMap(_.endpoints) ++ endpoints do
@@ -161,7 +117,6 @@ case class Server(
               )
             else
               notFoundEndpoint = ep
-              notFoundFn = mkInvoke(notFoundEndpoint)
           case EndpointSelector.MethodNotAllowed =>
             if methodNotAllowedEndpoint ne Server.defaultMethodNotAllowedEndpoint then
               throw new Exception(
@@ -169,11 +124,20 @@ case class Server(
               )
             else
               methodNotAllowedEndpoint = ep
-              methodNotAllowedFn = mkInvoke(methodNotAllowedEndpoint)
   end for
 
   private val interceptorFn =
     Interceptor.compose(activeInterceptors)
+
+  // invokes the endpoint and recovery if needed
+  private def invoke(ep: Endpoint, req: Request): WebResponse =
+    if WebAppUtil.checkCsrf(req.method, req.headers, csrfAllowedOrigins) then
+      ep.invoke(req) match
+        case EndpointResult.Success(response) =>
+          response
+        case failure: EndpointResult.Failure => recovery.invoke(req, ep, failure)
+    else
+      recovery.invoke(req, ep, EndpointResult.Failure.MethodAbort(403, "CSRF validation failed"))
 
   private val handlerFunc: Request => WebResponse = (req0: Request) =>
     val sessionData = req0.cookies.get("_session") match
@@ -202,13 +166,13 @@ case class Server(
 
     val response0 =
       if lookupResult.items.isEmpty then
-        interceptorFn(req, notFoundEndpoint, notFoundFn)
+        interceptorFn(req, notFoundEndpoint, invoke(notFoundEndpoint, _))
       else
         lookupResult.items.get(req0.method) match
-          case Some((endpoint, fn)) =>
-            interceptorFn(req, endpoint, fn)
+          case Some(endpoint) =>
+            interceptorFn(req, endpoint, invoke(endpoint, _))
           case None =>
-            interceptorFn(req, notFoundEndpoint, methodNotAllowedFn)
+            interceptorFn(req, notFoundEndpoint, invoke(methodNotAllowedEndpoint, _))
 
     val response = response0 match
       case simple: keg.model.Response[keg.model.Data] =>
@@ -305,13 +269,35 @@ case class Server(
 
 object Server:
 
-  // The XNIO library used by Undertow does logging in static initializers,
-  // so we need to set this system property before anything else is loaded.
-  System.setProperty("org.jboss.logging.provider", "slf4j")
-
   def debugFromEnv = sys.env.isDefinedAt("KEG_DEBUG") || sys.env.isDefinedAt("DEBUG")
 
   val defaultNotFoundEndpoint: Endpoint =
     Endpoint(EndpointSelector.NotFound, req => EndpointResult.Failure.MethodAbort(404, "Not Found"), EndpointMeta())
   val defaultMethodNotAllowedEndpoint: Endpoint =
     Endpoint(EndpointSelector.MethodNotAllowed, req => EndpointResult.Failure.MethodAbort(405, "Method Not Allowed"), EndpointMeta())
+
+  def defaultRecovery(debugMode: Boolean): Recovery =
+    // in debug mode, we also display the error to the user, in non-debug mode
+    // we just log it and return a generic message
+    if debugMode then
+      val fn = (req: Request, ep: Endpoint, failure: EndpointResult.Failure) =>
+        failure match
+          case EndpointResult.Failure.ParamAbort(param, code, message) =>
+            Response[keg.model.Data](s"Parameter '$param' is invalid: $message", code)
+          case EndpointResult.Failure.MethodAbort(code, message) =>
+            Response[keg.model.Data](message, code)
+          case EndpointResult.Failure.Exception(throwable) =>
+            log.error(s"Error in endpoint ${ep.meta} for request ${req.method} ${req.path}", throwable)
+            Response[keg.model.Data]("Internal Server Error " + throwable.getMessage, 500)
+      Recovery(fn)
+    else
+      val fn = (req: Request, ep: Endpoint, failure: EndpointResult.Failure) =>
+        failure match
+          case EndpointResult.Failure.ParamAbort(_, code, _) =>
+            Response[keg.model.Data]("Bad Request", code)
+          case EndpointResult.Failure.MethodAbort(code, message) =>
+            Response[keg.model.Data](message, code)
+          case EndpointResult.Failure.Exception(throwable) =>
+            log.error(s"Error in endpoint ${ep.meta} for request ${req.method} ${req.path}", throwable)
+            Response[keg.model.Data]("Internal Server Error", 500)
+      Recovery(fn)
