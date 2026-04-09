@@ -331,8 +331,13 @@ def exampleProjects = Seq(
   build.examples.errors.jvm,
   build.examples.websockets,
   build.examples.sessionflash.jvm,
+  build.examples.interceptors.jvm,
   build.examples.endpoints,
-  build.examples.tls
+  build.examples.tls,
+  build.examples.configtraits.jvm,
+  build.examples.state.jvm,
+  build.examples.forms.jvm,
+  build.examples.json.jvm,
 )
 
 // update actual readme from snippets in example apps

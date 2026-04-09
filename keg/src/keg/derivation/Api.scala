@@ -332,7 +332,7 @@ trait ExtraFroms extends StandardFroms:
           case arr: ujson.Arr => Result.Continue(arr)
           case _ => Result.Abort(400, "Expected JSON array")
 
-  given jsonFromRequest[A](using upickle.default.CaseClassReader[A]): FromRequest[A] with
+  given jsonFromRequest[A](using upickle.default.Reader[A]): FromRequest[A] with
     def fromRequest(req: Request, ctx: Context): Result[A] =
       try
         val obj = upickle.default.read[A](req.body)

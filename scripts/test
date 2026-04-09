@@ -1,0 +1,13 @@
+#!/bin/bash
+set -o errexit
+
+# update readme
+./mill readme
+
+# run tests
+./mill keg.__.test
+# examples use fixed ports, so can't be run in parallel; however we can
+# pre-build them in parallel to speed up the overall test process
+./mill examples.__.assembly
+./mill examples.__.nativeLink
+./mill -j 1 examples.__.test

@@ -19,7 +19,8 @@ def hello(req: keg.Request) =
       s"hello, nice to meet you! you haven't saved anything yet.\n"
 
 @keg.post("/post")
-def save(data: String) =
+def save(req: keg.Request) =
+  val data = req.text()
   // set a cookie with the saved data; this will be sent back to the client in
   // the response, and the client will send it back in future requests
   keg.Response(

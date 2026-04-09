@@ -4,6 +4,7 @@ export keg.model.Request
 export keg.model.Response
 export keg.model.Data
 export keg.model.ClientCertificate
+export keg.model.UploadFormData
 export keg.model.Cookie
 export keg.model.WsResponse
 export keg.model.Endpoint
@@ -17,6 +18,7 @@ export keg.model.WsActor
 
 export keg.main.Server
 export keg.main.Secret
+export keg.main.Interceptor
 export keg.transport.Listener
 
 object default extends keg.derivation.Api

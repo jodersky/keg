@@ -12,7 +12,7 @@ A small web framework, merging ideas from
 def hello(n: Int, req: keg.Request) =
   s"hello ${req.text()}\n" * n
 
-val server: keg.Server = keg.Server(keg.routes().endpoints)
+val server = keg.Server(keg.routes().endpoints)
 
 @main
 def main() =
@@ -63,22 +63,14 @@ The original cask customizations were the following:
 These then led to a more. [See here](./cask-diff.md) for a description of most
 changes and their rationales.
 
-## Managing state
-
-State management and dependency injection is often a key part of web frameworks
-that is prone to scope creep.
-
-Keg takes on a very limited role in state management: essentially, it only
-focuses on mechanisms to inject request-scoped state. Application state is not
-managed by keg, and users are free to use whatever they wish, be it plain
-classes with parameters or anything else.
-
 ## Feature overview
 
 - [Basics](#basics)
 - [Request routing](#request-routing)
 - [Reading request data](#reading-request-data)
 - [Returning responses](#returning-responses)
+- [Configuration traits](#configuration-traits)
+- [Managing state and structuring application](#managing-state-and-structuring-application)
 - [Error handling](#error-handling)
 - [Websockets](#websockets)
 - [Cookies, session, and flash data](#cookies-session-and-flash-data)
@@ -86,8 +78,6 @@ classes with parameters or anything else.
 - [Raw endpoints](#raw-endpoints)
 - [Interceptors](#interceptors)
 - [Transports](#transports)
-- [Custom config traits](#custom-config-traits)
-- [Managing state](#managing-state-1)
 - [Forms](#forms)
 - [JSON](#json)
 
@@ -578,6 +568,151 @@ x must be non-negative
 
 
 
+### Configuration traits
+
+
+By default, keg's `FromRequest` and `ToResponse` type class instances are
+defined as `given`s in companion objects. This works well for types you own,
+but falls apart for external types (from third-party libraries or the
+standard library) whose companion objects you cannot modify.
+
+The *configuration traits* pattern solves this by collecting all instances
+in a single object that extends `keg.derivation.Api`. Because `FromRequest`
+is path-dependent on that object, instances defined inside it are scoped to
+it and do not require touching the types' companion objects.
+
+Endpoints are then annotated with `@app.get` / `@app.post` (instead of the
+global `@keg.get` / `@keg.post`) so the macro looks up `FromRequest`
+instances in the right scope.
+
+#### Example
+
+Suppose `Pagination` comes from an external library. We cannot add a
+`given FromRequest[Pagination]` to its companion object, so we define it inside
+our own `app` object instead. All other givens for external types go there
+too, giving us one central place to look.
+
+```scala
+case class Pagination(page: Int, pageSize: Int) // imagine this is from a third-party library
+
+object app extends keg.derivation.Api:
+
+  // Defined here rather than in Pagination's companion object, which we don't control
+  given FromRequest[Pagination] with
+    def fromRequest(req: keg.Request, ctx: Context): keg.derivation.Result[Pagination] =
+      val page = req.queryParams.get("page").flatMap(_.toIntOption).getOrElse(1)
+      val pageSize = req.queryParams.get("pageSize").flatMap(_.toIntOption).getOrElse(10)
+      keg.derivation.Result.Continue(Pagination(page, pageSize))
+
+// Use @app.post, not @keg.post, so the macro resolves FromRequest inside `app`
+@app.post("/profile")
+def profile(pagination: Pagination) =
+  s"Page: ${pagination.page}, Page Size: ${pagination.pageSize}\n"
+
+val routes = keg.routes()
+
+@main
+def main() =
+  val server = keg.Server(routes.endpoints)
+  server.start()
+```
+
+```
+$ curl "http://localhost:8080/profile?page=2&pageSize=5" -X POST
+Page: 2, Page Size: 5
+```
+
+
+### Managing state and structuring application
+
+
+State management and dependency injection is often a key part of web
+frameworks that is prone to scope creep.
+
+Keg takes on a very limited role in state management: essentially, it only
+focuses on mechanisms to inject request-scoped state. Application state is
+not managed by keg, and users are free to use whatever they wish, be it plain
+classes with parameters or anything else.
+
+The recommended way to inject request-scoped state is by using the
+configuration-trait pattern described earlier, but where the configuration
+trait contains state.
+
+For example, a typical use case is requiring a logged-in user: the
+`FromRequest[User]` instance looks up the session and either yields the user
+or short-circuits the request with a `401 Unauthorized` — similar to [request
+guards in Rocket](https://rocket.rs/guide/v0.5/requests/#request-guards).
+
+
+```scala
+case class User(name: String)
+
+object app extends keg.derivation.Api:
+  // in a real application, this would likely be a database or an external service
+  val userDb = collection.mutable.Map[String, User]("alice" -> User("Alice"))
+
+  given FromRequest[User] with
+    def fromRequest(req: keg.Request, ctx: Context): keg.derivation.Result[User] =
+      userDb.get(req.queryParams.get("username").getOrElse("")) match
+        case Some(user) => keg.derivation.Result.Continue(user)
+        case None       => keg.derivation.Result.Respond(keg.Response("Unauthorized\n", 401))
+
+@app.post("/profile")
+def profile(user: User) =
+  s"Hello, ${user.name}!\n"
+
+val routes = keg.routes()
+
+@main
+def main() =
+  val server = keg.Server(routes.endpoints)
+  server.start()
+```
+
+```
+$ curl "http://localhost:8080/profile?username=alice" -X POST
+Hello, Alice!
+```
+
+```
+$ curl "http://localhost:8080/profile?username=nobody" -X POST -i
+HTTP/1.1 401 Unauthorized
+...
+Unauthorized
+```
+
+Note that you are not limited to static objects! You can make your whole
+application as modular as you like, using plain classes for dependency
+injection.
+
+```scala
+class UserService:
+  val userDb = collection.mutable.Map[String, User]("alice" -> User("Alice"))
+
+class App(userService: UserService) extends keg.derivation.Api:
+  given FromRequest[User] with
+    def fromRequest(req: keg.Request, ctx: Context): keg.derivation.Result[User] =
+      userService.userDb.get(req.queryParams.get("username").getOrElse("")) match
+        case Some(user) => keg.derivation.Result.Continue(user)
+        case None       => keg.derivation.Result.Respond(keg.Response("Unauthorized\n", 401))
+
+class Routes(app: App):
+
+  @app.post("/profile")
+  def profile(user: User) =
+    s"Hello, ${user.name}!\n"
+
+  val routes = keg.routes()
+
+def main2() =
+  val userService = UserService()
+  val app = App(userService)
+  val routes = Routes(app).routes
+  val server = keg.Server(routes.endpoints)
+  server.start()
+```
+
+
 ### Error handling
 
 
@@ -715,7 +850,8 @@ def hello(req: keg.Request) =
       s"hello, nice to meet you! you haven't saved anything yet.\n"
 
 @keg.post("/post")
-def save(data: String) =
+def save(req: keg.Request) =
+  val data = req.text()
   // set a cookie with the saved data; this will be sent back to the client in
   // the response, and the client will send it back in future requests
   keg.Response(
@@ -958,9 +1094,158 @@ val server = keg.Server(endpoints)
 
 ### Interceptors
 
-derivation <-- "user" API, annotated methods Req => Response
-endpoints  <-- what the annotated methods generate, this is essentially the same as the user api but without syntax sugar Req => EndpointResult
-interceptors <-- opaque to application logic, Req => Response
+
+An *interceptor* is a component that sits between the server and your
+endpoint handlers. It is called for every request that matches an endpoint,
+and can:
+- perform side effects before or after calling the handler (e.g. logging)
+- modify the request before passing it to the handler
+- modify the response before returning it to the client
+- short-circuit the request and return a response directly (e.g. auth checks)
+
+Interceptors are a good fit for cross-cutting concerns that are *opaque* to
+the endpoint handlers — things they don't need to know about, such as
+logging, metrics or compression. For concerns that the handler *does* need to
+know about (e.g. the currently logged-in user), prefer a custom `FromRequest`
+instance instead.
+
+#### Logging
+
+The simplest kind of interceptor just runs side effects around the handler.
+Here we print a line before and after every request:
+
+```scala
+object LoggingInterceptor extends keg.Interceptor:
+  def intercept(
+    request: keg.Request,
+    endpoint: keg.Endpoint,
+    next: keg.Request => keg.WebResponse
+  ): keg.WebResponse =
+    println(s"--> ${request.method} ${request.path}")
+    val response = next(request)
+    response match
+      case r: keg.Response[?] =>
+        println(s"<-- ${r.status}")
+      case _ =>
+    response
+```
+
+#### Request/response modification
+
+Interceptors can also transform the request before it reaches the handler, or
+wrap the response on the way back out. The following interceptor adds
+transparent gzip compression: it decompresses a gzip-encoded request body
+(if present) and compresses the response body when the client signals that it
+accepts gzip encoding.
+
+```scala
+import java.util.zip.{GZIPInputStream, GZIPOutputStream}
+
+object GzipInterceptor extends keg.Interceptor:
+  def intercept(
+    request: keg.Request,
+    endpoint: keg.Endpoint,
+    next: keg.Request => keg.WebResponse
+  ): keg.WebResponse =
+    // Decompress request body if Content-Encoding: gzip
+    val req =
+      if request.headers.get("content-encoding").exists(_.equalsIgnoreCase("gzip")) then
+        request.copy(getBody = () => GZIPInputStream(request.getBody()))
+      else
+        request
+
+    val response = next(req)
+
+    // Compress response if client accepts gzip
+    val clientAcceptsGzip = request.headers
+      .getAll("accept-encoding")
+      .flatMap(_.split(','))
+      .map(_.trim.toLowerCase)
+      .exists(_ == "gzip")
+
+    if !clientAcceptsGzip then response
+    else
+      response match
+        case resp: keg.Response[keg.model.Data] =>
+          val originalData = resp.data
+          val compressedData = new keg.model.Data:
+            def write(out: java.io.OutputStream): Unit =
+              val gz = GZIPOutputStream(out)
+              originalData.write(gz)
+              gz.finish()
+            def headers: Seq[(String, String)] = originalData.headers
+            def contentLength: Option[Long] = None
+          resp.copy(
+            data = compressedData,
+            headers = resp.headers :+ ("Content-Encoding" -> "gzip")
+          )
+        case ws: keg.model.WsResponse => ws
+```
+
+#### Short-circuiting
+
+An interceptor can also return a response *without* calling `next`, which
+completely bypasses the handler. This is useful for things like access
+control. The example below rejects any request that doesn't carry a specific
+header:
+
+```scala
+case class ApiKeyInterceptor(validKey: String) extends keg.Interceptor:
+  def intercept(
+    request: keg.Request,
+    endpoint: keg.Endpoint,
+    next: keg.Request => keg.WebResponse
+  ): keg.WebResponse =
+    request.headers.get("x-api-key") match
+      case Some(key) if key == validKey =>
+        next(request)
+      case _ =>
+        keg.Response("Unauthorized", 401)
+```
+
+#### Using interceptors
+
+Interceptors are passed to `keg.Server` via the `interceptors` parameter.
+They are applied in order, so the first interceptor in the list is the
+outermost one (it runs first on the way in and last on the way out).
+
+```scala
+@keg.get("/hello")
+def hello(req: keg.Request) =
+  s"hello, ${req.headers.getOrElse("x-name", "world")}!\n"
+
+val routes = keg.routes()
+
+@main
+def main() =
+  val server = keg.Server(
+    routes.endpoints,
+    interceptors = Seq(
+      LoggingInterceptor,
+      GzipInterceptor,
+      ApiKeyInterceptor("secret")
+    )
+  )
+  server.start()
+```
+
+```
+$ curl "http://localhost:8080/hello" -H "x-api-key: secret" -H "x-name: alice"
+hello, alice!
+```
+
+```
+$ curl "http://localhost:8080/hello" -i
+HTTP/1.1 401 Unauthorized
+...
+Unauthorized
+```
+
+```
+$ curl "http://localhost:8080/hello" --compressed -H "x-api-key: secret"
+hello, world!
+```
+
 
 ### Transports
 
@@ -1011,39 +1296,141 @@ keg.Server(
 ```
 
 You can also implement your own transport if you like. Take a look at the
-[Transport](???) trait to see what you need.
-
-### Custom config traits
-
-### Managing state
+[Transport](keg/transport/Transport.scala) trait to see what you need.
 
 ### Forms
 
-- formdata
-- uploadformdata
+
+Keg supports two kinds of form data:
+
+- **URL-encoded** (`application/x-www-form-urlencoded`): the default for
+  HTML forms without file inputs.
+- **Multipart** (`multipart/form-data`): used when forms include file
+  uploads.
+
+#### URL-encoded forms
+
+Use `keg.FormData` to read URL-encoded submissions. Fields are accessible
+by name via `form.fields`. Field data is capped at 30 KB by default; larger
+submissions are rejected with `413 Content Too Large`.
+
+```scala
+@keg.post("/greet")
+def greet(form: keg.FormData) =
+  val name = form.fields.getOrElse("name", "world")
+  s"Hello, $name!\n"
+```
+
+```
+$ curl http://localhost:8080/greet -d "name=Alice"
+Hello, Alice!
+```
+
+#### Multipart forms and file uploads
+
+Use `keg.UploadFormData` to handle `multipart/form-data` requests. Plain
+fields are in `form.fields`; uploaded files are in `form.files`. Each file
+entry carries the original filename and a `java.nio.file.Path` pointing to a
+temporary copy on disk — keg cleans it up automatically when the value is
+garbage-collected.
+
+The default limits are 30 KB for plain fields and 100 MB per uploaded file;
+submissions that exceed these limits are rejected with `413 Content Too
+Large`.
+
+```scala
+@keg.post("/upload")
+def upload(form: keg.UploadFormData) =
+  val label = form.fields.getOrElse("label", "file")
+  val file = form.files("content")
+  val bytes = java.nio.file.Files.readAllBytes(file.path)
+  s"$label (${file.filename}): ${new String(bytes)}\n"
+```
+
+```
+$ printf "hello keg" | curl http://localhost:8080/upload  -F "label=message" -F "content=@-;filename=note.txt"
+message (note.txt): hello keg
+```
+
+
+
 
 ### JSON
 
+
+Keg integrates with [upickle](https://com-lihaoyi.github.io/upickle/) for
+JSON support, covering both raw and typed access.
+
+#### Raw JSON
+
+Parameters of type `ujson.Value`, `ujson.Obj`, or `ujson.Arr` are parsed
+from the request body automatically. You can return them directly as
+responses — keg serializes them back to JSON and sets `Content-Type:
+application/json`.
+
+```scala
+@keg.post("/echo")
+def echo(body: ujson.Value) =
+  body
+```
+
+```
+$ curl http://localhost:8080/echo -d '{"name":"Alice","scores":[1,2,3]}'
+{"name":"Alice","scores":[1,2,3]}
+```
+
+#### Typed JSON with `derives ReadWriter`
+
+For typed access, derive `upickle.default.ReadWriter` on a case class. Keg
+picks up the generated instances automatically — the case class can be used
+as an endpoint parameter (request parsing) and as a return type (response
+serialization) with no additional boilerplate:
+
+```scala
+case class Item(name: String, count: Int) derives upickle.default.ReadWriter
+
+@keg.post("/double")
+def double(item: Item) =
+  val doubled = item.copy(count = item.count * 2)
+  upickle.default.write(doubled) // TODO: fix the ToResponse conversion issues so this works
+
+```
+
+```
+$ curl http://localhost:8080/double -d '{"name":"apples","count":5}'
+{"name":"apples","count":10}
+```
+
+Malformed or missing fields produce a `400 Bad Request` automatically:
+
+```
+$ curl http://localhost:8080/double -d 'not json' -i
+HTTP/1.1 400 Bad Request
+...
+```
+
+
+
+
 ## Internals
 
-- division of layers
+### Layers
 
-  (arrow means "depends on")
+(arrow means "depends on")
 
-  ```mermaid
-  graph LR
-    derivation
-    model
-    main
-    transport
-    util
+```mermaid
+graph LR
+  derivation
+  model
+  main
+  transport
+  util
 
-    derivation --> model
-    main --> model
-    main --> transport
-    transport --> model
-
-  ```
+  derivation --> model
+  main --> model
+  main --> transport
+  transport --> model
+```
 
 - model: scala types that are used to represent things involved in handling HTTP
   requests
@@ -1059,4 +1446,3 @@ You can also implement your own transport if you like. Take a look at the
 Derivation and model layers are to be considered as library layers, no logging
 or side-effecting is allowed; those are reserved for main and transport.
 
-synchronous

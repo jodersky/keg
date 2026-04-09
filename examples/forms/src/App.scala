@@ -1,43 +1,56 @@
 package app
 
-@keg.get("/")
-def home() =
-  val html =
-    """|<doctype html>
-       |<html>
-       |  <head><title>Form Example</title></head>
-       |  <body>
-       |    <h1>Submit a Form</h1>
-       |    <form action="/form" method="post">
-       |      <label for="name">Name:</label>
-       |      <input type="text" id="name" name="name"><br><br>
-       |      <label for="value">Value:</label>
-       |      <input type="text" id="value" name="value"><br><br>
-       |      <input type="submit" value="Submit">
-       |    </form>
-       |    <form action="/upload" method="post" enctype="multipart/form-data">
-       |      <label for="file">File:</label>
-       |      <input type="file" id="file" name="file"><br><br>
-       |      <input type="submit" value="Upload">
-       |    </form>
-       |  </body>
-       |</html>""".stripMargin
-  keg.Response(html, headers = Seq("Content-Type" -> "text/html"))
+// Keg supports two kinds of form data:
+//
+// - **URL-encoded** (`application/x-www-form-urlencoded`): the default for
+//   HTML forms without file inputs.
+// - **Multipart** (`multipart/form-data`): used when forms include file
+//   uploads.
+//
+// #### URL-encoded forms
+//
+// Use `keg.FormData` to read URL-encoded submissions. Fields are accessible
+// by name via `form.fields`. Field data is capped at 30 KB by default; larger
+// submissions are rejected with `413 Content Too Large`.
+//snippet:start
+@keg.post("/greet")
+def greet(form: keg.FormData) =
+  val name = form.fields.getOrElse("name", "world")
+  s"Hello, $name!\n"
+//snippet:end
+/* usage snippet
+$ curl http://localhost:8080/greet -d "name=Alice"
+Hello, Alice!
+*/
 
-@keg.post("/form")
-def index(data: keg.FormData) =
-  val name = data.fields("name")
-  val value = data.fields("value")
-  keg.Response(s"Hello, $name! Value is: $value")
-
+// #### Multipart forms and file uploads
+//
+// Use `keg.UploadFormData` to handle `multipart/form-data` requests. Plain
+// fields are in `form.fields`; uploaded files are in `form.files`. Each file
+// entry carries the original filename and a `java.nio.file.Path` pointing to a
+// temporary copy on disk — keg cleans it up automatically when the value is
+// garbage-collected.
+//
+// The default limits are 30 KB for plain fields and 100 MB per uploaded file;
+// submissions that exceed these limits are rejected with `413 Content Too
+// Large`.
+//snippet:start
 @keg.post("/upload")
-def upload(data: keg.model.UploadFormData) =
-  val fileContent = java.nio.file.Files.readString(data.files("file").path)
-  keg.Response(s"File content is: $fileContent")
+def upload(form: keg.UploadFormData) =
+  val label = form.fields.getOrElse("label", "file")
+  val file = form.files("content")
+  val bytes = java.nio.file.Files.readAllBytes(file.path)
+  s"$label (${file.filename}): ${new String(bytes)}\n"
+//snippet:end
+/* usage snippet
+$ printf "hello keg" | curl http://localhost:8080/upload \
+  -F "label=message" \
+  -F "content=@-;filename=note.txt"
+message (note.txt): hello keg
+*/
 
 val routes = keg.routes()
-val server: keg.Server = keg.Server(routes.endpoints, debugMode = false)
 
 @main
 def main() =
-  server.start()
+  keg.Server(routes.endpoints).start()

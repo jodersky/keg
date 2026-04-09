@@ -40,22 +40,14 @@ The original cask customizations were the following:
 These then led to a more. [See here](./cask-diff.md) for a description of most
 changes and their rationales.
 
-## Managing state
-
-State management and dependency injection is often a key part of web frameworks
-that is prone to scope creep.
-
-Keg takes on a very limited role in state management: essentially, it only
-focuses on mechanisms to inject request-scoped state. Application state is not
-managed by keg, and users are free to use whatever they wish, be it plain
-classes with parameters or anything else.
-
 ## Feature overview
 
 - [Basics](#basics)
 - [Request routing](#request-routing)
 - [Reading request data](#reading-request-data)
 - [Returning responses](#returning-responses)
+- [Configuration traits](#configuration-traits)
+- [Managing state and structuring application](#managing-state-and-structuring-application)
 - [Error handling](#error-handling)
 - [Websockets](#websockets)
 - [Cookies, session, and flash data](#cookies-session-and-flash-data)
@@ -63,8 +55,6 @@ classes with parameters or anything else.
 - [Raw endpoints](#raw-endpoints)
 - [Interceptors](#interceptors)
 - [Transports](#transports)
-- [Custom config traits](#custom-config-traits)
-- [Managing state](#managing-state-1)
 - [Forms](#forms)
 - [JSON](#json)
 
@@ -83,6 +73,14 @@ classes with parameters or anything else.
 ### Returning responses
 
 [include:responsetypes]
+
+### Configuration traits
+
+[include:configtraits]
+
+### Managing state and structuring application
+
+[include:state]
 
 ### Error handling
 
@@ -106,9 +104,7 @@ classes with parameters or anything else.
 
 ### Interceptors
 
-derivation <-- "user" API, annotated methods Req => Response
-endpoints  <-- what the annotated methods generate, this is essentially the same as the user api but without syntax sugar Req => EndpointResult
-interceptors <-- opaque to application logic, Req => Response
+[include:interceptors]
 
 ### Transports
 
@@ -159,39 +155,35 @@ keg.Server(
 ```
 
 You can also implement your own transport if you like. Take a look at the
-[Transport](???) trait to see what you need.
-
-### Custom config traits
-
-### Managing state
+[Transport](keg/transport/Transport.scala) trait to see what you need.
 
 ### Forms
 
-- formdata
-- uploadformdata
+[include:forms]
 
 ### JSON
 
+[include:json]
+
 ## Internals
 
-- division of layers
+### Layers
 
-  (arrow means "depends on")
+(arrow means "depends on")
 
-  ```mermaid
-  graph LR
-    derivation
-    model
-    main
-    transport
-    util
+```mermaid
+graph LR
+  derivation
+  model
+  main
+  transport
+  util
 
-    derivation --> model
-    main --> model
-    main --> transport
-    transport --> model
-
-  ```
+  derivation --> model
+  main --> model
+  main --> transport
+  transport --> model
+```
 
 - model: scala types that are used to represent things involved in handling HTTP
   requests
@@ -207,4 +199,4 @@ You can also implement your own transport if you like. Take a look at the
 Derivation and model layers are to be considered as library layers, no logging
 or side-effecting is allowed; those are reserved for main and transport.
 
-synchronous
+
