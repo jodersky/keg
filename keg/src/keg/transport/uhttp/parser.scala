@@ -70,7 +70,6 @@ def parse(
       res = ParseResult.RequestLineTooLarge
       return -1
     uri = buffer.toString()
-    uri = java.net.URLDecoder.decode(uri, "UTF-8")
 
     buffer.clear()
     n = 0
@@ -174,64 +173,22 @@ def parse(
 def parseCookieHeaders(cookies: collection.Seq[String]): Map[String, keg.model.Cookie] =
   val result = scala.collection.mutable.Map[String, keg.model.Cookie]()
 
+  // The request Cookie header is a flat list of name=value pairs separated by
+  // semicolons (RFC 6265 §5.4). There are no attributes — those only appear in
+  // Set-Cookie response headers.
   for rawCookie <- cookies do
-    val parts = rawCookie.split(";").nn.map(_.nn.trim.nn)
-    if parts.nonEmpty then
-      val nameValue = parts(0)
+    val pairs = rawCookie.split(";").nn.map(_.nn.trim.nn)
+    for nameValue <- pairs do
       val eqIdx = nameValue.indexOf('=')
       val (name, value) =
         if eqIdx < 0 then (nameValue, "")
         else (nameValue.substring(0, eqIdx).trim.nn, nameValue.substring(eqIdx + 1).trim.nn)
 
-      var comment: String  = null
-      var domain: String   = null
-      var expires: java.time.Instant = null
-      var maxAge: Integer  = null
-      var path: String     = null
-      var version: Int     = 1
-      var discard          = false
-      var httpOnly         = false
-      var secure           = false
-      var sameSite: String = "Lax"
-
-      for part <- parts.drop(1) do
-        val attrEq = part.indexOf('=')
-        val (attrName, attrValue) =
-          if attrEq < 0 then (part.toLowerCase.nn, "")
-          else (part.substring(0, attrEq).trim.toLowerCase.nn, part.substring(attrEq + 1).trim.nn)
-
-        attrName match
-          case "comment"  => comment  = attrValue
-          case "domain"   => domain   = attrValue
-          case "path"     => path     = attrValue
-          case "samesite" => sameSite = attrValue
-          case "version"  => version  = attrValue.toIntOption.getOrElse(1)
-          case "max-age"  => maxAge   = attrValue.toIntOption.map(Integer.valueOf).orNull
-          case "discard"  => discard  = true
-          case "httponly" => httpOnly = true
-          case "secure"   => secure   = true
-          case "expires"  =>
-            try
-              expires = java.time.Instant.from(
-                java.time.format.DateTimeFormatter.RFC_1123_DATE_TIME.parse(attrValue)
-              )
-            catch case _: Exception => () // ignore unparseable dates
-          case _ => () // ignore unknown attributes
-
-      result(name) = keg.model.Cookie(
-        name     = name,
-        value    = value,
-        comment  = comment,
-        domain   = domain,
-        expires  = expires,
-        maxAge   = maxAge,
-        path     = path,
-        version  = version,
-        discard  = discard,
-        httpOnly = httpOnly,
-        secure   = secure,
-        sameSite = sameSite,
-      )
+      if name.nonEmpty then
+        result(name) = keg.model.Cookie(
+          name  = name,
+          value = value,
+        )
 
   result.toMap
 

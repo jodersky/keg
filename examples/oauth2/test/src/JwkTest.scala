@@ -63,7 +63,7 @@ object JwkTest extends TestSuite:
 
   val tests = Tests:
     test("jwkFromKey"):
-      val jwk = oauth2.crypto.jwkFromKey(publicKey).value.toSeq.sortBy(_._1)
+      val jwk = oauth2.jwt.jwkFromKey(publicKey).value.toSeq.sortBy(_._1)
       val expected = expectedJwk("keys")(0).obj.toSeq.sortBy(_._1)
 
       println(jwk)
@@ -79,19 +79,19 @@ object JwkTest extends TestSuite:
         "admin" -> true
       )
 
-      val jwt = oauth2.crypto.signJwt(
+      val jwt = oauth2.jwt.signJwt(
         claims,
         privateKey.asInstanceOf[java.security.interfaces.ECPrivateKey],
         publicKey.asInstanceOf[java.security.interfaces.ECPublicKey]
       )
       println(jwt)
 
-      val verified = oauth2.crypto.verifyJwt(jwt, publicKey.asInstanceOf[java.security.interfaces.ECPublicKey])
+      val verified = oauth2.jwt.verifyJwt(jwt, publicKey.asInstanceOf[java.security.interfaces.ECPublicKey])
       assert(verified.isDefined)
       assert(verified.get == claims)
 
       val forged = jwt.substring(0, jwt.lastIndexOf('.')) + ".forgedsignature"
-      val verifiedForged = oauth2.crypto.verifyJwt(forged, publicKey.asInstanceOf[java.security.interfaces.ECPublicKey])
+      val verifiedForged = oauth2.jwt.verifyJwt(forged, publicKey.asInstanceOf[java.security.interfaces.ECPublicKey])
       assert(verifiedForged.isEmpty)
 
       val bitFlipped = jwt.substring(0, jwt.indexOf('.') + 1) + {
@@ -100,7 +100,7 @@ object JwkTest extends TestSuite:
         val modified = decoded.updated(0, (decoded(0) ^ 1).toByte)
         java.util.Base64.getEncoder.withoutPadding.encodeToString(modified)
       } + jwt.substring(jwt.lastIndexOf('.'))
-      val verifiedBitFlipped = oauth2.crypto.verifyJwt(bitFlipped, publicKey.asInstanceOf[java.security.interfaces.ECPublicKey])
+      val verifiedBitFlipped = oauth2.jwt.verifyJwt(bitFlipped, publicKey.asInstanceOf[java.security.interfaces.ECPublicKey])
       assert(verifiedBitFlipped.isEmpty)
 
       // also, use a site like https://jwt.io/ to verify the signature using the public key, and check that the signature is correct

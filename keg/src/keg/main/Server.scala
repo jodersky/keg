@@ -10,10 +10,10 @@ import keg.model.EndpointMeta
 import keg.model.EndpointSelector
 import keg.model.WsResponse
 import keg.model.EndpointResult
-import keg.util.log
 import keg.model.Recovery
 import keg.main.DispatchTrie.DispatchLookup
 import keg.util.Util
+import java.util.concurrent.TimeoutException
 
 /** A simple HTTP server using Undertow.
   *
@@ -52,17 +52,17 @@ case class Server(
     debugInterceptors: Seq[Interceptor] = Seq(Reloader),
     transportBuilder: keg.transport.Transport.BuilderFunc = keg.transport.Platform.mkDefaultTransport
 ):
-  log.info(s"Debug mode: $debugMode")
-  log.info(s"Initializing Keg Server with ${endpoints.size} endpoints")
+  // scribe.info(s"Debug mode: $debugMode")
+  // scribe.info(s"Initializing Keg Server with ${endpoints.size} endpoints")
 
   private val runtimeSecrets: Seq[Array[Byte]] =
     if secrets.nonEmpty then
       secrets.map(Secret.check)
     else if debugMode then
-      log.warn("No secrets provided for server in debug mode, using random persisted secret.")
+      scribe.warn("No secrets provided for server in debug mode, using random persisted secret.")
       Seq(Secret.check(Secret.persistent()))
     else
-      log.warn("No secrets provided for server, using random secret. This means that sessions and flash will not be valid across server restarts, and any existing cookies will be invalidated!")
+      scribe.warn("No secrets provided for server, using random secret. This means that sessions and flash will not be valid across server restarts, and any existing cookies will be invalidated!")
       Seq(Secret.check(Secret.random()))
 
   private val dispatchTrie = DispatchTrie[Endpoint]()
@@ -101,7 +101,7 @@ case class Server(
     endpoint match
       case r: Recovery =>
         if debugMode then
-          log.warn(s"Ignoring recovery handler because debugMode is enabled")
+          scribe.warn(s"Ignoring recovery handler because debugMode is enabled")
         else
           recovery = r
       case ep: Endpoint =>
@@ -140,6 +140,7 @@ case class Server(
       recovery.invoke(req, ep, EndpointResult.Failure.MethodAbort(403, "CSRF validation failed"))
 
   private val handlerFunc: Request => WebResponse = (req0: Request) =>
+    scribe.debug(s"Received request: ${req0.method} ${req0.path}")
     val sessionData = req0.cookies.get("_session") match
       case None => Map.empty[String, String]
       case Some(cookie) =>
@@ -228,43 +229,41 @@ case class Server(
 
     response
 
-  private val transport = transportBuilder(listeners, handlerFunc, log.info(_))
+  private val transport = transportBuilder(listeners, handlerFunc)
 
   def start(): Unit =
     if activeInterceptors.nonEmpty then
-      log.info("Active interceptors: " + activeInterceptors.map(_.toString()).mkString("\n- ", "\n- ", ""))
+      scribe.debug("Active interceptors: " + activeInterceptors.map(_.toString()).mkString("\n- ", "\n- ", ""))
     else
-      log.info("No interceptors active")
+      scribe.debug("No interceptors active")
     for interceptor <- activeInterceptors do
       interceptor.onStartup(this.endpoints.collect({
         case ep: Endpoint => ep
       }))
 
-    log.info(s"Starting Keg Server")
+    scribe.debug(s"Starting Keg server")
     transport.start()
 
-    val listeners = transport.getListeners.iterator
-    while listeners.hasNext do
-      val listener = listeners.next()
-
-      log.info(
-        s"Listening on ${listener.asUrl}"
-      )
+    val listenerInfo = transport.getListeners.map(_.asUrl).mkString(", ")
+    if debugMode then
+      scribe.warn(s"Keg server in DEBUG mode listening on $listenerInfo")
+    else
+      scribe.info(s"Keg server listening on $listenerInfo")
 
   def serverPort() = transport.getListeners.headOption match
     case Some(keg.transport.Listener.Http(_, port)) => port
-    case Some(keg.transport.Listener.Https(_, port, _, _)) => port
+    case Some(keg.transport.Listener.Https(_, port, _, _, _)) => port
     case None => throw new Exception("Server is not listening on any ports")
 
   def awaitTermination(): Unit =
     transport.awaitTermination()
 
   def stop(): Unit =
-    log.info("Stopping Keg Server")
+    scribe.info("stopping keg server")
     transport.stop()
 
   def kill(): Unit =
-    log.info("Killing Keg Server")
+    scribe.info("killing keg server")
     transport.kill()
 
 object Server:
@@ -283,11 +282,13 @@ object Server:
       val fn = (req: Request, ep: Endpoint, failure: EndpointResult.Failure) =>
         failure match
           case EndpointResult.Failure.ParamAbort(param, code, message) =>
+            scribe.warn(s"Error in endpoint ${ep.meta} for request ${req.method} ${req.path}: Parameter '$param' is invalid: $message")
             Response[keg.model.Data](s"Parameter '$param' is invalid: $message", code)
           case EndpointResult.Failure.MethodAbort(code, message) =>
+            scribe.warn(s"Error in endpoint ${ep.meta} for request ${req.method} ${req.path}: $message")
             Response[keg.model.Data](message, code)
           case EndpointResult.Failure.Exception(throwable) =>
-            log.error(s"Error in endpoint ${ep.meta} for request ${req.method} ${req.path}", throwable)
+            scribe.error(s"Error in endpoint ${ep.meta} for request ${req.method} ${req.path}", throwable)
             Response[keg.model.Data]("Internal Server Error " + throwable.getMessage, 500)
       Recovery(fn)
     else
@@ -298,6 +299,6 @@ object Server:
           case EndpointResult.Failure.MethodAbort(code, message) =>
             Response[keg.model.Data](message, code)
           case EndpointResult.Failure.Exception(throwable) =>
-            log.error(s"Error in endpoint ${ep.meta} for request ${req.method} ${req.path}", throwable)
+            scribe.error(s"Error in endpoint ${ep.meta} for request ${req.method} ${req.path}", throwable)
             Response[keg.model.Data]("Internal Server Error", 500)
       Recovery(fn)

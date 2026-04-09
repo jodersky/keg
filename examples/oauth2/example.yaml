@@ -1,0 +1,12 @@
+server:
+  host: "::"
+  port: 8080
+  # key: "key.pem"
+  # cert: "cert.pem"
+  db: oauth2.db
+
+  # users need to re-login after this time
+  session_ttl: 7d
+
+  # the issuer is used in the "iss" claim of issued JWTs, and should be the base URL of this server
+  issuer: "http://localhost:8080"

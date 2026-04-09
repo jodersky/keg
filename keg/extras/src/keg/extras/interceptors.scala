@@ -4,21 +4,20 @@ import keg.main.Interceptor
 import keg.model.{Endpoint, Request, Response, WebResponse, WsResponse, EndpointSelector}
 
 class LoggingInterceptor extends Interceptor:
-  private val log = org.slf4j.LoggerFactory.getLogger(getClass)
 
   override def intercept(
     request: Request,
     endpoint: Endpoint,
     next: Request => WebResponse
   ): WebResponse =
-    log.info(s"Incoming request: ${request.method} ${request.path}")
+    scribe.info(s"Incoming request: ${request.method} ${request.path}")
     val response = next(request)
     response match
       case resp: Response[keg.model.Data] =>
-        log.info(s"Response: ${resp.status} for ${request.method} ${request.path}")
+        scribe.info(s"Response: ${resp.status} for ${request.method} ${request.path}")
         resp
       case wsResp: WsResponse =>
-        log.info(s"WebSocket response for ${request.method} ${request.path}")
+        scribe.info(s"WebSocket response for ${request.method} ${request.path}")
         wsResp
 
 class TimingInterceptor extends Interceptor:

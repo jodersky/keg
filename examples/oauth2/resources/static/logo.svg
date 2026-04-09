@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <!-- shield outline -->
+  <path d="M32 4 L56 16 V34 C56 48 32 60 32 60 C32 60 8 48 8 34 V16 Z"
+        fill="none" stroke="currentColor" stroke-width="3" stroke-linejoin="round"/>
+  <!-- skeleton key: bow (ring) -->
+  <circle cx="32" cy="24" r="6" fill="none" stroke="currentColor" stroke-width="2.5"/>
+  <!-- skeleton key: shaft -->
+  <line x1="32" y1="30" x2="32" y2="42" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+  <!-- skeleton key: bit (teeth) -->
+  <line x1="32" y1="38" x2="27" y2="38" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+  <line x1="32" y1="42" x2="27" y2="42" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+</svg>

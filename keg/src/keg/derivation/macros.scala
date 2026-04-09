@@ -6,6 +6,11 @@ import scala.quoted.Quotes
 import keg.model.WebResponse
 import keg.model.EndpointResult
 
+class AbortException(val code: Int, val message: String) extends Exception(message)
+
+def abort(code: Int, message: String = ""): Nothing =
+  throw new AbortException(code, message)
+
 def routesImpl()(using q: Quotes) =
   import q.reflect.*
 
@@ -18,9 +23,16 @@ def routesImpl()(using q: Quotes) =
   yield
     endpointImpl(m, annot)
 
+  val recs = for
+    m <- container.symbol.declaredMethods
+    annot <- m.annotations
+    if annot.tpe <:< TypeRepr.of[keg.derivation.BaseApi#error]
+  yield
+    recoveryImpl(m, annot)
+
   '{
     new keg.model.Routes:
-      def endpoints: Seq[keg.model.Endpoint] = ${Expr.ofSeq(eps)}
+      def endpoints: Seq[keg.model.Endpoint | keg.model.Recovery] = ${Expr.ofSeq(eps)} ++ ${Expr.ofSeq(recs)}
       def paths: keg.model.Paths = new keg.model.Paths {}
   }
 
@@ -260,9 +272,21 @@ def endpointImpl(using qctx: Quotes)(
 
         val bindSym = Symbol.newBind(sym, "e", Flags.EmptyFlags, TypeRepr.of[Exception])
 
+        val abortExceptionSym = Symbol.newBind(sym, "e", Flags.EmptyFlags, TypeRepr.of[AbortException])
+
         Try(
           block,
           List(
+            CaseDef(
+              Bind(
+                abortExceptionSym,
+                Typed(Wildcard(), TypeTree.of[AbortException])
+              ),
+              None,
+              '{
+                EndpointResult.Failure.MethodAbort(${Ref(abortExceptionSym).asExprOf[AbortException]}.code, ${Ref(abortExceptionSym).asExprOf[AbortException]}.message)
+              }.asTerm
+            ),
             CaseDef(
               Bind(
                 bindSym,
@@ -319,4 +343,73 @@ def endpointImpl(using qctx: Quotes)(
         function = ${Expr(method.fullName)}
       )
     )
+  }
+
+def recoveryImpl(using qctx: Quotes)(
+  method: qctx.reflect.Symbol,
+  annot: qctx.reflect.Term,
+): Expr[keg.model.Recovery] =
+  import qctx.reflect.*
+
+  val rt = method.termRef.widenTermRefByName.asInstanceOf[MethodType].resType.widenTermRefByName
+
+  val invokeFunc = Lambda(
+    Symbol.spliceOwner,
+    MethodType(
+      List("req", "ep", "f")
+    )(
+      _ => List(
+        TypeRepr.of[keg.model.Request],
+        TypeRepr.of[keg.model.Endpoint],
+        TypeRepr.of[keg.model.EndpointResult.Failure]
+      ),
+      _ => TypeRepr.of[keg.model.Response[keg.model.Data]]
+    ), {
+      case (sym, List(req, ep, f)) =>
+        val argss = for params <- method.paramSymss yield
+          for param <- params yield
+            val tpe = param.termRef.widenTermRefByName
+            if tpe =:= TypeRepr.of[keg.Request] then
+              Ref(req.symbol)
+            else if tpe =:= TypeRepr.of[keg.model.Endpoint] then
+              Ref(ep.symbol)
+            else if tpe =:= TypeRepr.of[keg.model.EndpointResult.Failure] then
+              Ref(f.symbol)
+            else
+              report.errorAndAbort(
+                s"Invalid parameter type for recovery method: ${tpe.show}. Expected Request, Endpoint, or EndpointResult.Failure.",
+                param.pos.get
+              )
+
+        val base: Term = Ref(method)
+        val application = argss.foldLeft(base)((lhs, args) => Apply(lhs, args))
+
+        Implicits.search(TypeRepr.of[Conversion].appliedTo(List(rt, TypeRepr.of[keg.model.Response[keg.model.Data]]))) match
+          case success: ImplicitSearchSuccess =>
+            Apply(
+              Select.unique(success.tree, "apply"),
+              List(application)
+            ).asExprOf[keg.model.Response[keg.model.Data]]
+          case failure: ImplicitSearchFailure =>
+             report.errorAndAbort(
+              s"No given instance of Conversion[${rt.show}, Response[Data]] found for recovery method '${method.name}'",
+              method.pos.get
+            )
+
+    //     if !(rt <:< TypeRepr.of[keg.model.Response[keg.model.Data]]) then
+    // report.errorAndAbort(
+    //   s"Recovery method must return Response[Data], but found ${rt.show}",
+    //   method.pos.get
+    // )
+
+        application
+      case _ => ???
+    }
+  )
+
+
+  '{
+      keg.model.Recovery(
+        invoke = ${invokeFunc.asExprOf[(keg.model.Request, keg.model.Endpoint, keg.model.EndpointResult.Failure) => keg.model.Response[keg.model.Data]]}
+      )
   }

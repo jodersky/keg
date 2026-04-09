@@ -1,0 +1,711 @@
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  font-family: system-ui, sans-serif;
+  background: #f5f5f5;
+  color: #222;
+}
+
+/* full-page layout: centered horizontally, space at top */
+.layout-full {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding-top: 10vh;
+}
+
+/* page layout with top nav */
+.layout-page .topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #fff;
+  border-bottom: 1px solid #ddd;
+  padding: 0.75rem 1.5rem;
+}
+
+.login-logo {
+  width: 4rem;
+  height: 4rem;
+  margin-bottom: 1rem;
+}
+
+.topbar-logo {
+  width: 1.25em;
+  height: 1.25em;
+  vertical-align: middle;
+  margin-right: 0.5rem;
+}
+
+.layout-page .topbar nav a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.layout-page .topbar nav a:hover {
+  text-decoration: underline;
+}
+
+/* user dropdown menu */
+.user-menu > button {
+  background: transparent;
+  color: inherit;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  font-size: inherit;
+}
+
+.user-menu-dropdown {
+  position-anchor: --user-menu;
+  position-area: bottom right;
+  margin-top: 0.25rem;
+  background: #fff;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  min-width: 8rem;
+}
+
+.user-menu > [popovertarget] {
+  anchor-name: --user-menu;
+}
+
+.user-menu-dropdown form {
+  border: none;
+  border-radius: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+  background: transparent;
+}
+
+.user-menu-dropdown button {
+  width: 100%;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  padding: 0.5rem 0.75rem;
+  border-radius: 4px;
+}
+
+.user-menu-dropdown button:hover {
+  background: #f0f0f0;
+}
+
+.layout-page .content {
+  max-width: 48rem;
+  margin: 0 auto;
+  padding: 1.5rem;
+}
+
+/* item list (GitHub-style) */
+.item-list {
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  overflow: hidden;
+  margin-bottom: 1rem;
+}
+
+.item-list-empty {
+  padding: 1.5rem;
+  text-align: center;
+  color: #999;
+}
+
+.item-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid #eee;
+  text-decoration: none;
+  color: inherit;
+}
+
+.item-row:last-child {
+  border-bottom: none;
+}
+
+.item-row:hover {
+  background: rgba(0, 0, 0, 0.02);
+}
+
+.item-row-main {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.item-row-name {
+  font-weight: 600;
+}
+
+.item-row-id {
+  font-size: 0.8rem;
+  color: #888;
+  font-family: monospace;
+}
+
+.item-badge {
+  font-size: 0.8rem;
+  padding: 0.2rem 0.5rem;
+  border-radius: 10rem;
+  white-space: nowrap;
+}
+
+.badge-confidential {
+  background: #e8f0fe;
+  color: #1a56db;
+}
+
+.badge-public {
+  background: #e6f9ed;
+  color: #116329;
+}
+
+.badge-admin {
+  background: #fef3cd;
+  color: #856404;
+}
+
+.item-row-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.item-row-email {
+  font-size: 0.8rem;
+  color: #888;
+}
+
+/* detail view */
+.content > h1 > .editable {
+  margin-left: -0.35rem;
+}
+
+.detail-list {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.5rem 1.5rem;
+  align-items: baseline;
+}
+
+.detail-list dt {
+  font-weight: 600;
+}
+
+.editable {
+  cursor: pointer;
+  padding: 0.15rem 0.35rem;
+  border-radius: 3px;
+  border: 1px dashed transparent;
+}
+
+.editable::after {
+  content: " \270E"; /* pencil character ✎ */
+  opacity: 0;
+  font-size: 0.85em;
+  transition: opacity 0.15s;
+}
+
+.editable:hover {
+  border-color: #ccc;
+  background: rgba(0, 0, 0, 0.03);
+}
+
+.editable:hover::after {
+  opacity: 0.5;
+}
+
+.editable:focus {
+  outline: none;
+  border-color: #ccc;
+  background: rgba(0, 0, 0, 0.03);
+}
+
+.editable:focus::after {
+  opacity: 0.5;
+}
+
+.field-edit-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.field-edit {
+  font-size: inherit;
+  padding: 0.15rem 0.35rem;
+}
+
+.edit-accept,
+.edit-discard {
+  background: transparent;
+  border: none;
+  padding: 0 0.25rem;
+  font-size: 0.9em;
+  cursor: pointer;
+  color: #999;
+}
+
+.edit-accept:hover {
+  color: #090;
+  background: transparent;
+}
+
+.edit-discard:hover {
+  color: #c00;
+  background: transparent;
+}
+
+.field-edit-invalid {
+  border-color: #c00;
+  outline-color: #c00;
+}
+
+.field-error-msg {
+  display: block;
+  color: #c00;
+  font-size: 0.85rem;
+  margin-top: 0.2rem;
+}
+
+/* redirect URI list */
+.uri-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.uri-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.2rem 0;
+  transition: opacity 0.3s ease-out;
+}
+
+.uri-item.htmx-swapping {
+  opacity: 0;
+}
+
+.uri-item .editable {
+  flex: 1;
+}
+
+.uri-item .field-edit {
+  flex: 1;
+}
+
+.uri-delete {
+  background: transparent;
+  color: #999;
+  border: none;
+  padding: 0 0.4rem;
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.uri-delete:hover {
+  color: #c00;
+  background: transparent;
+}
+
+.uri-add {
+  margin-top: 0.5rem;
+  background: transparent;
+  color: #666;
+  border: 1px dashed #ccc;
+  font-size: 0.9rem;
+  padding: 0.3rem 0.75rem;
+}
+
+.uri-add:hover {
+  border-color: #999;
+  color: #333;
+  background: transparent;
+}
+
+.copy-btn {
+  background: transparent;
+  color: #999;
+  border: none;
+  padding: 0 0.3rem;
+  font-size: 0.9em;
+  cursor: pointer;
+  vertical-align: middle;
+}
+
+.copy-btn:hover {
+  color: #333;
+  background: transparent;
+}
+
+.info-icon {
+  color: #999;
+  cursor: help;
+  font-size: 0.85em;
+  vertical-align: middle;
+}
+
+.info-icon:hover {
+  color: #555;
+}
+
+.danger-zone {
+  margin-top: 2rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid #ddd;
+  display: flex;
+  gap: 0.75rem;
+}
+
+.secret-field {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.secret-rotate {
+  background: transparent;
+  color: #666;
+  border: none;
+  padding: 0 0.3rem;
+  font-size: 1.2rem;
+  cursor: pointer;
+}
+
+.secret-rotate:hover {
+  color: #333;
+  background: transparent;
+}
+
+.secret-revealed {
+  font-size: 0.85rem;
+}
+
+/* confirmation dialog */
+.confirm-dialog {
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  padding: 1.5rem;
+  max-width: 28rem;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.15);
+}
+
+.confirm-dialog::backdrop {
+  background: rgba(0, 0, 0, 0.3);
+  backdrop-filter: blur(4px);
+}
+
+.confirm-dialog p {
+  margin: 0 0 1.5rem 0;
+}
+
+.confirm-dialog form {
+  background: transparent;
+  border: none;
+  padding: 0;
+  min-width: 0;
+}
+
+.form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin-bottom: 1rem;
+}
+
+.form-field label {
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.form-field select {
+  padding: 0.5rem 0.75rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-family: inherit;
+  font-size: 1rem;
+  background: #fff;
+}
+
+.confirm-dialog-actions {
+  display: flex;
+  gap: 0.75rem;
+  justify-content: flex-end;
+}
+
+.confirm-dialog-danger {
+  background: #c00;
+}
+
+.confirm-dialog-danger:hover {
+  background: #e00;
+}
+
+form {
+  background: #fff;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  padding: 2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  min-width: 280px;
+}
+
+input[type="text"],
+input[type="password"] {
+  padding: 0.5rem 0.75rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-family: inherit;
+  font-size: 1rem;
+  width: 100%;
+}
+
+input[type="submit"], button {
+  padding: 0.5rem 0.75rem;
+  background: #333;
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  font-family: inherit;
+  font-size: 1rem;
+  cursor: pointer;
+}
+
+input[type="submit"]:hover, button:hover {
+  background: #555;
+}
+
+ul {
+  text-align: left;
+  padding-left: 1.5rem;
+}
+
+code {
+  background: #eee;
+  padding: 0.1rem 0.3rem;
+  border-radius: 3px;
+  font-size: 0.85rem;
+  word-break: break-all;
+}
+
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(-0.25rem); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.text-muted {
+  color: #999;
+}
+
+.change-password-form {
+  max-width: 24rem;
+}
+
+.consent-revoke-form {
+  background: transparent;
+  border: none;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+
+.flash {
+  animation: fade-in 0.3s ease-out;
+  padding: 0.5rem 1rem;
+  border-radius: 4px;
+  margin-bottom: 1rem;
+  font-size: 0.9rem;
+}
+
+.flash.error {
+  background: #fdd;
+  border: 1px solid #f99;
+  color: #900;
+}
+
+.flash.success {
+  background: #dfd;
+  border: 1px solid #9c9;
+  color: #060;
+}
+
+.flash.info {
+  background: #ddf;
+  border: 1px solid #99f;
+  color: #009;
+}
+
+@media (prefers-color-scheme: dark) {
+  body {
+    background: #1a1a1a;
+    color: #e0e0e0;
+  }
+
+  .layout-page .topbar {
+    background: #2a2a2a;
+    border-bottom-color: #444;
+  }
+
+  .user-menu-dropdown {
+    background: #2a2a2a;
+    border-color: #444;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+  }
+
+  .user-menu-dropdown button:hover {
+    background: #3a3a3a;
+  }
+
+  form {
+    background: #2a2a2a;
+    border-color: #444;
+  }
+
+  input[type="text"],
+  input[type="password"] {
+    background: #333;
+    border-color: #555;
+    color: #e0e0e0;
+  }
+
+  input[type="submit"], button {
+    background: #555;
+  }
+
+  input[type="submit"]:hover, button:hover {
+    background: #777;
+  }
+
+  code {
+    background: #3a3a3a;
+  }
+
+  .flash.error {
+    background: #3a1a1a;
+    border-color: #a00;
+    color: #f99;
+  }
+
+  .flash.success {
+    background: #1a3a1a;
+    border-color: #0a0;
+    color: #9f9;
+  }
+
+  .flash.info {
+    background: #1a1a3a;
+    border-color: #00a;
+    color: #99f;
+  }
+
+  .editable:hover,
+  .editable:focus {
+    border-color: #555;
+    background: rgba(255, 255, 255, 0.05);
+  }
+
+  .edit-accept:hover {
+    color: #6f6;
+  }
+
+  .edit-discard:hover {
+    color: #f66;
+  }
+
+  .item-list {
+    border-color: #444;
+  }
+
+  .item-row {
+    border-bottom-color: #333;
+  }
+
+  .item-row:hover {
+    background: rgba(255, 255, 255, 0.03);
+  }
+
+  .badge-confidential {
+    background: #1e3a5f;
+    color: #7db8f0;
+  }
+
+  .badge-public {
+    background: #1a3a2a;
+    color: #7de0a0;
+  }
+
+  .badge-admin {
+    background: #3a3520;
+    color: #f0d060;
+  }
+
+  .danger-zone {
+    border-top-color: #444;
+  }
+
+  .copy-btn:hover {
+    color: #ccc;
+  }
+
+  .info-icon:hover {
+    color: #ccc;
+  }
+
+  .secret-rotate {
+    color: #999;
+  }
+
+  .secret-rotate:hover {
+    color: #ccc;
+  }
+
+  .uri-delete:hover {
+    color: #f66;
+  }
+
+  .uri-add {
+    color: #999;
+    border-color: #555;
+  }
+
+  .uri-add:hover {
+    color: #ccc;
+    border-color: #888;
+  }
+
+  .field-edit-invalid {
+    border-color: #f66;
+  }
+
+  .field-error-msg {
+    color: #f66;
+  }
+
+  .confirm-dialog {
+    background: #2a2a2a;
+    border-color: #444;
+    color: #e0e0e0;
+  }
+
+  .form-field select {
+    background: #333;
+    border-color: #555;
+    color: #e0e0e0;
+  }
+
+  .confirm-dialog::backdrop {
+    background: rgba(0, 0, 0, 0.5);
+  }
+}

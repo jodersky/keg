@@ -82,7 +82,7 @@ object Data:
 
       def contentLength: Option[Long] = Some(bytes.length.toLong)
 
-  given numberAsData[N <: Number]: Conversion[N, Data] with
+  given numberAsData[N](using n: Numeric[N]): Conversion[N, Data] with
     def apply(a: N): Data = stringAsData(a.toString)
 
   given booleanAsData: Conversion[Boolean, Data] with
@@ -104,6 +104,9 @@ object Data:
 
       def contentLength: Option[Long] = a.contentLength
 
+  given foo[A](using c: A => geny.Writable): Conversion[A, Data] with
+    def apply(a: A): Data = genyAsData(c(a))
+
   // Geny uses Scala 2, so we provide an implicit class for conversions
   implicit class GenyAsDataCompat[A](a: A)(implicit f: A => geny.Writable)
       extends Data:
@@ -116,21 +119,17 @@ object Data:
 
     def contentLength: Option[Long] = writable.contentLength
 
-// object Response:
+object Response:
 
-//   given dataAsResponse[A](using f: Conversion[A, Data]): Conversion[A, Response[Data]] with
-//     def apply(a: A): Response[Data] =
-//       Response(
-//         data = f(a),
-//         status = 200,
-//         headers = Seq.empty
-//       )
+  // given dataAsResponse[A](using f: Conversion[A, Data]): Conversion[A, Response[Data]] with
+  //   def apply(a: A): Response[Data] =
+  //     Response(
+  //       data = f(a),
+  //       status = 200,
+  //       headers = Seq.empty
+  //     )
 
-//   import scala.language.implicitConversions
+  import scala.language.implicitConversions
 
-//   implicit def compat[A](a: A)(implicit f: A => Data): Response[Data] =
-//     Response(
-//       data = f(a),
-//       status = 200,
-//       headers = Seq.empty
-//     )
+  implicit def compat[A](a: Response[A])(implicit f: A => Data): Response[Data] =
+    a.copy(data = f(a.data))

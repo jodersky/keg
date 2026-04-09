@@ -159,7 +159,7 @@ case class Recovery(
   * used to generate URLs to the endpoints in a type-safe way.
   */
 trait Routes:
-  def endpoints: Seq[Endpoint]
+  def endpoints: Seq[Endpoint | Recovery]
   def paths: Paths
 
 /** This will be refined by macros to contain the actual paths.

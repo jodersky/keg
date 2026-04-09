@@ -59,14 +59,6 @@ object UhttpParserTest extends TestSuite:
       val req = ok(uhttp.parse(mkStream("GET /a/b/c/d HTTP/1.1\r\n\r\n")))
       assert(req.uri == "/a/b/c/d")
 
-    test("urlEncodedUri"):
-      val req = ok(uhttp.parse(mkStream("GET /hello%20world HTTP/1.1\r\n\r\n")))
-      assert(req.uri == "/hello world")
-
-    test("urlEncodedQueryParam"):
-      val req = ok(uhttp.parse(mkStream("GET /search?q=hello%20world HTTP/1.1\r\n\r\n")))
-      assert(req.uri == "/search?q=hello world")
-
     // --- headers ---
 
     test("singleHeader"):
@@ -179,48 +171,6 @@ object UhttpParserTest extends TestSuite:
       )
       assert(result == uhttp.ParseResult.HeadersTooLarge)
     // --- unicode ---
-
-    // URI percent-encoding is decoded via URLDecoder, so multi-byte UTF-8
-    // sequences encoded as %XX%XX should round-trip correctly.
-
-    test("uriPercentEncodedAccentedChar"):
-      // é = U+00E9, UTF-8: 0xC3 0xA9
-      val req = ok(uhttp.parse(mkStream("GET /caf%C3%A9 HTTP/1.1\r\n\r\n")))
-      assert(req.uri == "/café")
-
-    test("uriPercentEncodedCJK"):
-      // 中 = U+4E2D, UTF-8: 0xE4 0xB8 0xAD
-      val req = ok(uhttp.parse(mkStream("GET /%E4%B8%AD HTTP/1.1\r\n\r\n")))
-      assert(req.uri == "/中")
-
-    test("uriPercentEncodedEmoji"):
-      // 😀 = U+1F600, UTF-8: 0xF0 0x9F 0x98 0x80
-      val req = ok(uhttp.parse(mkStream("GET /%F0%9F%98%80 HTTP/1.1\r\n\r\n")))
-      assert(req.uri == "/😀")
-
-    test("uriPercentEncodedLowercaseHex"):
-      // URLDecoder must handle lowercase hex digits
-      val req = ok(uhttp.parse(mkStream("GET /caf%c3%a9 HTTP/1.1\r\n\r\n")))
-      assert(req.uri == "/café")
-
-    test("uriPercentEncodedNullByte"):
-      // %00 decodes to the null character — documents current behavior
-      val req = ok(uhttp.parse(mkStream("GET /foo%00bar HTTP/1.1\r\n\r\n")))
-      assert(req.uri == "/foo\u0000bar")
-
-    test("uriPercentEncodedSlash"):
-      // %2F is a literal slash after decoding — not a path separator
-      val req = ok(uhttp.parse(mkStream("GET /foo%2Fbar HTTP/1.1\r\n\r\n")))
-      assert(req.uri == "/foo/bar")
-
-    test("uriMixedAsciiAndUnicode"):
-      // Mix of plain ASCII and percent-encoded multi-byte sequence
-      val req = ok(uhttp.parse(mkStream("GET /hello-%E4%B8%96%E7%95%8C HTTP/1.1\r\n\r\n")))
-      assert(req.uri == "/hello-世界")
-
-    test("uriQueryParamWithUnicode"):
-      val req = ok(uhttp.parse(mkStream("GET /search?q=%F0%9F%94%8D HTTP/1.1\r\n\r\n")))
-      assert(req.uri == "/search?q=🔍")
 
     test("headerValueNonAsciiBytesPreservedAsLatin1"):
       // The parser reads raw bytes and casts each to Char (no charset decoding),

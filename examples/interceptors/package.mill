@@ -1,0 +1,21 @@
+package build.examples.interceptors
+
+import mill.scalalib.*
+import mill.scalanativelib.*
+
+object `package` extends mill.Module:
+
+  object jvm extends build.UsageExampleModule with ScalaModule:
+    def moduleDir = super.moduleDir / os.up
+    def scalaVersion = build.scala3
+    def moduleDeps = Seq(build.keg.jvm)
+
+    def serverExecutable = assembly()
+
+  object native extends build.UsageExampleModule with ScalaModule with ScalaNativeModule:
+    def moduleDir = super.moduleDir / os.up
+    def scalaVersion = build.scala3
+    def scalaNativeVersion = build.scalaNative
+    def moduleDeps = Seq(build.keg.native)
+
+    def serverExecutable = nativeLink()

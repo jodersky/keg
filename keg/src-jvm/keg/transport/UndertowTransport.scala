@@ -4,10 +4,16 @@ import io.undertow
 import keg.model.{Request, Response, WebResponse, WsResponse}
 
 object UndertowTransport:
-
-  // The XNIO library used by Undertow does logging in static initializers,
-  // so we need to set this system property before anything else is loaded.
-  System.setProperty("org.jboss.logging.provider", "slf4j")
+  // TODO: this is kind of a hack, not sure if we should keep it? But I would
+  // also like to avoid keg becoming some enterprisey framework, which requires
+  // a bunch of random configuration to be set for a decent experience.
+  def jbossLogging(): Unit =
+    // The XNIO library used by Undertow does logging in static initializers, so
+    // we need to configure the logging system before anything else is loaded.
+    // System.setProperty("org.jboss.logging.provider", "slf4j")
+    scribe.Logger.system.installJUL()
+    scribe.Logger("org.xnio").withMinimumLevel(scribe.Level.Warn).replace()
+    scribe.Logger("io.undertow").withMinimumLevel(scribe.Level.Warn).replace()
 
   private def compactIpv6(addr: java.net.Inet6Address): String =
     val bytes = addr.getAddress() // 16 bytes, big-endian
@@ -39,13 +45,13 @@ object UndertowTransport:
 class UndertowTransport(
   listeners: Seq[Listener],
   fn: Request => WebResponse,
-  log: String => Unit,
   builder: undertow.Undertow.Builder = undertow.Undertow.builder()
 ) extends Transport:
+  UndertowTransport.jbossLogging()
 
   private given castorContext: castor.Context = castor.Context.Simple(
     castor.Context.Simple.executionContext,
-    err => log(s"Actor error: $err")
+    err => scribe.error(s"Actor error: $err")
   )
 
   private class WsChannelActor(channel: io.undertow.websockets.core.WebSocketChannel) extends castor.SimpleActor[keg.model.Ws.Event]:
@@ -184,10 +190,23 @@ class UndertowTransport(
         }
         .toMap
 
+      // note: if mTLS has been enabled, the certificate will have been
+      // *verified* already by the underlying SSLContext, so we can trust that
+      // if a certificate is present, we just need to extract it
+      val clientCert = exchange.getConnection().getSslSessionInfo() match
+        case null => None
+        case sslSession => Ssl.extractClientCert(sslSession.getSSLSession())
+
+      var target = exchange.getRequestURI()
+
+      // TODO: we're re-building the target just to deconstruct it in the
+      // request again
+      if exchange.getNonDecodedQueryString() != null then
+        target += "?" + exchange.getQueryString()
+
       val request = keg.model.Request(
         method = exchange.getRequestMethod().toString,
-        path = exchange.getRequestPath(),
-        queryParams = keg.util.MultiDict.empty,
+        target = target,
         headers = headers,
         pathParams = Map.empty,
         remainingPathSegments = IndexedSeq.empty,
@@ -195,7 +214,8 @@ class UndertowTransport(
         session = Map.empty,
         flash = Map.empty,
         getBody = () => exchange.getInputStream(),
-        remoteIp = exchange.getSourceAddress().getAddress()
+        remoteIp = exchange.getSourceAddress().getAddress(),
+        clientCertificate = clientCert
       )
 
       fn(request) match
@@ -207,6 +227,10 @@ class UndertowTransport(
 
   end handler
 
+  private val blockingHandler = new undertow.server.handlers.BlockingHandler(handler)
+
+  private val shutdownHandler = new undertow.server.handlers.GracefulShutdownHandler(blockingHandler)
+
   var server: undertow.Undertow = null
 
   def start(): Unit =
@@ -214,17 +238,23 @@ class UndertowTransport(
       listener match
         case Listener.Http(host, port) =>
           builder.addHttpListener(port, host)
-        case Listener.Https(host, port, key, cert) =>
-          val sslContext = Platform.mkSslContext(key, cert)
+        case Listener.Https(host, port, key, cert, clientCa) =>
+          val sslContext = Platform.mkSslContext(key, cert, clientCa)
           builder.addHttpsListener(port, host, sslContext)
+          if clientCa.isDefined then
+            builder.setSocketOption(org.xnio.Options.SSL_CLIENT_AUTH_MODE, org.xnio.SslClientAuthMode.REQUESTED)
 
-    server = builder.setHandler(undertow.server.handlers.BlockingHandler(handler)).build()
+    builder.setHandler(shutdownHandler)
+
+    server = builder.build()
     server.start()
 
   def getListeners: Seq[Listener] =
     val ls = collection.mutable.ListBuffer.empty[Listener]
 
+    val it = listeners.iterator
     server.getListenerInfo().forEach: info =>
+      val defn = it.next()
       val address = info.getAddress().asInstanceOf[java.net.InetSocketAddress]
       val compact = address.getAddress match
         case ipv6: java.net.Inet6Address => UndertowTransport.compactIpv6(ipv6)
@@ -235,17 +265,41 @@ class UndertowTransport(
         case "http" =>
           ls += Listener.Http(compact, address.getPort)
         case "https" =>
-          ls += Listener.Https(compact, address.getPort, "", "") // TODO: get cert/key from Undertow if possible
+          val orig = defn.asInstanceOf[Listener.Https]
+          ls += Listener.Https(compact, address.getPort, orig.key, orig.cert, orig.clientCa)
         case other =>
-          log(s"Unknown protocol $other for listener on ${compact}:${address.getPort}, skipping")
+          scribe.error(s"Unknown protocol $other for listener on ${compact}:${address.getPort}, skipping")
 
     ls.toSeq
 
+  // all this machinery is needed to work around Undertow's incompatible
+  // shutdown behavior:
+  // - we need an extra thread to shutdown the server after waiting for the
+  //   handler to have shutdown
+  // - for some reason awaitShutdown() throws, so we can't just call it in our
+  //   awaitTermination() method
+  private val shutdownLatch = new java.util.concurrent.CountDownLatch(1)
+
+  private val waiter = new Thread(
+    () =>
+      shutdownHandler.shutdown()
+      shutdownHandler.awaitShutdown()
+      server.stop()
+      shutdownLatch.countDown(),
+    "shutdown-waiter"
+  )
+
+  private val shuttingDown = new java.util.concurrent.atomic.AtomicBoolean(false)
+
   def stop(): Unit =
-    if server != null then server.stop()
+    if shuttingDown.compareAndSet(false, true) then
+      waiter.start()
+
   def kill(): Unit =
     if server != null then server.stop()
+    shutdownLatch.countDown()
   def awaitTermination(): Unit =
+    shutdownLatch.await()
     val worker = server.getWorker()
     if worker != null then
       worker.awaitTermination()

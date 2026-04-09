@@ -1,0 +1,38 @@
+#!/bin/sh
+set -e
+
+DIR="$(dirname "$0")/creds"
+mkdir -p "$DIR"
+
+# Server CA
+openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:P-256 -out "$DIR/server-ca.key"
+openssl req -new -x509 -days 3650 -key "$DIR/server-ca.key" \
+  -subj "/CN=server-ca" -out "$DIR/server-ca.crt"
+
+# Server cert signed by server CA
+openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:P-256 -out "$DIR/server.key"
+openssl req -new -key "$DIR/server.key" \
+  -subj "/CN=localhost" -out "$DIR/server.csr"
+printf "subjectAltName=DNS:localhost,IP:127.0.0.1" > "$DIR/server.ext"
+openssl x509 -req -days 3650 \
+  -in "$DIR/server.csr" \
+  -CA "$DIR/server-ca.crt" -CAkey "$DIR/server-ca.key" -CAcreateserial \
+  -extfile "$DIR/server.ext" \
+  -out "$DIR/server.crt"
+
+# Client CA
+openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:P-256 -out "$DIR/client-ca.key"
+openssl req -new -x509 -days 3650 -key "$DIR/client-ca.key" \
+  -subj "/CN=client-ca" -out "$DIR/client-ca.crt"
+
+# Client cert signed by client CA
+openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:P-256 -out "$DIR/client.key"
+openssl req -new -key "$DIR/client.key" \
+  -subj "/CN=client" -out "$DIR/client.csr"
+openssl x509 -req -days 3650 \
+  -in "$DIR/client.csr" \
+  -CA "$DIR/client-ca.crt" -CAkey "$DIR/client-ca.key" -CAcreateserial \
+  -out "$DIR/client.crt"
+
+rm -f "$DIR"/*.csr "$DIR"/*.srl "$DIR"/*.ext
+echo "Certificates written to $DIR"

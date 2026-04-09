@@ -15,17 +15,28 @@ def home() =
        |      <input type="text" id="value" name="value"><br><br>
        |      <input type="submit" value="Submit">
        |    </form>
+       |    <form action="/upload" method="post" enctype="multipart/form-data">
+       |      <label for="file">File:</label>
+       |      <input type="file" id="file" name="file"><br><br>
+       |      <input type="submit" value="Upload">
+       |    </form>
        |  </body>
        |</html>""".stripMargin
   keg.Response(html, headers = Seq("Content-Type" -> "text/html"))
 
 @keg.post("/form")
-def index(data: keg.forms.FormData) =
+def index(data: keg.FormData) =
   val name = data.fields("name")
   val value = data.fields("value")
   keg.Response(s"Hello, $name! Value is: $value")
 
-val server: keg.Server = keg.Server(keg.routes().endpoints, debugMode = false)
+@keg.post("/upload")
+def upload(data: keg.model.UploadFormData) =
+  val fileContent = java.nio.file.Files.readString(data.files("file").path)
+  keg.Response(s"File content is: $fileContent")
+
+val routes = keg.routes()
+val server: keg.Server = keg.Server(routes.endpoints, debugMode = false)
 
 @main
 def main() =

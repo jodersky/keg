@@ -31,19 +31,24 @@ object keg extends Module:
   val commonDeps = Seq(
     thirdparty.geny,
     thirdparty.castor,
-    thirdparty.upickle
+    thirdparty.upickle,
+    thirdparty.scribe
   )
 
   object jvm extends KegMultiModule:
     def moduleDeps = Seq(keg.forms.jvm)
     def mvnDeps = commonDeps ++ Seq(
-      thirdparty.slf4jSimple,
+      // thirdparty.slf4jSimple,
       thirdparty.undertow
     )
     object test extends ScalaTests with KegTestModule:
       def mvnDeps = super.mvnDeps() ++ Seq(
         thirdparty.requests,
         thirdparty.oslib
+      )
+      def sources = Task.Sources(
+        moduleDir / "src",
+        moduleDir / "src-jvm",
       )
   object native extends KegMultiNativeModule:
     def moduleDeps = Seq(keg.forms.native)
@@ -105,29 +110,245 @@ object sandbox extends ScalaModule:
 //     thirdparty.requests
 //   )
 
-object examples extends Module:
-  trait ExampleModule extends ScalaModule:
-    def scalaVersion = scala3
-    def moduleDeps = Seq(keg.jvm)
-    def scalacOptions = Seq("-explain-cyclic")
+// object examples extends Module:
+trait ExampleModule extends ScalaModule:
+  def scalaVersion = scala3
+  def moduleDeps = Seq(keg.jvm)
+  def scalacOptions = Seq("-explain-cyclic")
 
-    object test extends ScalaTests:
-      def testFramework = "utest.runner.Framework"
-      def mvnDeps = Seq(
-        thirdparty.utest,
-        thirdparty.requests
+  object test extends ScalaTests:
+    def testFramework = "utest.runner.Framework"
+    def mvnDeps = Seq(
+      thirdparty.utest,
+      thirdparty.requests
+    )
+
+trait UsageExampleModule extends Module:
+
+  def serverExecutable: T[PathRef]
+
+  def exampleFile = Task.Input:
+    ExampleFile.fromFile(
+      moduleDir / "src" / "App.scala"
+    )
+
+  def test() = Task.Command:
+    var serverProcess: os.SubProcess = null
+    try
+      val latch = new java.util.concurrent.CountDownLatch(1)
+      serverProcess = os.proc(serverExecutable().path.toString).spawn(
+        stdout = os.ProcessOutput.Readlines( line =>
+          if line.contains("listening on") then latch.countDown()
+        ),
+        cwd = moduleDir
       )
+      val ready = latch.await(10, java.util.concurrent.TimeUnit.SECONDS)
+      if !ready then
+        sys.error("Server did not start within 10 seconds")
 
-  object oauth2 extends ExampleModule:
-    def mvnDeps = super.mvnDeps() ++ Seq(
-      thirdparty.scalatags,
-      thirdparty.caffeine
-    )
-  object endpoints extends ExampleModule
 
-  object reloader extends ExampleModule:
-    def mvnDeps = super.mvnDeps() ++ Seq(
-      thirdparty.scalatags
-    )
+      for (invocation0, expected) <- exampleFile().usageTests do
+        val invocation = invocation0.replaceAll("\\$ ", "")
 
-  object forms extends ExampleModule
+        Task.log.info(s"Running test: ${invocation}")
+
+        val result = os.proc("sh", "-c", invocation).call(
+          stdin = os.Inherit,
+          stdout = os.Pipe,
+          stderr = os.Pipe,
+          check = false,
+          cwd = moduleDir
+        )
+
+        val output = result.out.text()
+
+        val outLines = output.linesIterator.map(_.trim()).mkString("\n")
+        val expectedLines = expected.linesIterator.map(_.trim()).mkString("\n")
+
+        def compareLines(expected: String, output: String): Boolean =
+          expected.equalsIgnoreCase(output)
+
+        var matches = true
+        val outIter = output.linesIterator.buffered
+        val expectedIter = expected.linesIterator.buffered
+        while expectedIter.hasNext && matches do
+          val expectedLine = expectedIter.next().trim()
+          if expectedLine == "..." then
+            if expectedIter.hasNext then
+              val nextExpected = expectedIter.head.trim()
+              var found = false
+              while outIter.hasNext && !found do
+                if compareLines(outIter.head.trim(), nextExpected) then found = true
+                else outIter.next()
+              if !found then matches = false
+          else
+            if outIter.hasNext then
+              if !compareLines(outIter.next().trim(), expectedLine) then matches = false
+            else
+              matches = false
+
+
+        assert(
+          matches,
+          s"""|For invocation:
+              |${invocation}
+              |Expected:
+              |---
+              |${expectedLines}
+              |---
+              |Got:
+              |---
+              |${outLines}
+              |---
+              |""".stripMargin
+        )
+    finally
+      if serverProcess != null then
+        serverProcess.destroy()
+        serverProcess.waitFor()
+
+  // object jvm extends ScalaModule:
+  //   def moduleDir = super.moduleDir / os.up
+  //   def scalaVersion = scala3
+  //   def moduleDeps = Seq(keg.jvm)
+
+  //   object test extends ScalaTests with KegTestModule:
+  //     def mvnDeps = super.mvnDeps() ++ Seq(thirdparty.oslib)
+  //     def forkEnv = Map("KEG_TEST_EXECUTABLE" -> jvm.assembly().path.toString)
+
+  // object native extends ScalaModule with ScalaNativeModule:
+  //   def moduleDir = super.moduleDir / os.up
+  //   def scalaVersion = scala3
+  //   def scalaNativeVersion = scalaNative
+  //   def moduleDeps = Seq(keg.native)
+  //   object test extends ScalaNativeTests with KegTestModule:
+  //     def mvnDeps = super.mvnDeps() ++ Seq(thirdparty.oslib)
+  //     def forkEnv = Map("KEG_TEST_EXECUTABLE" -> native.nativeLink().path.toString)
+
+
+
+/** A runnable scala file, whose content can also be rendered as
+  * markdown.
+  *
+  * The idea is to write example code that serves multiple purposes:
+  * documentation as markdown and runnable example code, as well as testable
+  * code.
+  *
+  * The source files work the following way:
+  * - they are regular .scala files, runnable via scala-cli
+  * - comments within them will be extracted as markdown text
+  * - scala code can be marked as snippets to be extracted as code blocks in
+  *   markdown
+  * - usage examples can be provided in special comment blocks, which also be
+  *   rendered as snippets in markdown, and also be executed as tests to verify
+  *   that the output is as expected
+  */
+case class ExampleFile(
+  markdown: String,
+  usageTests: Seq[(String, String)] = Seq.empty
+) derives upickle.default.ReadWriter
+object ExampleFile:
+  def fromFile(
+    path: os.Path,
+    changeInvocation: String => String = s => s
+  ) =
+    val markdown = new StringBuilder
+    val usageTests = collection.mutable.ListBuffer.empty[(String, String)]
+
+    val lines = os.read(path).linesIterator
+
+    var line = ""
+    def readLine() = if lines.hasNext then line = lines.next() else line = null
+
+    readLine()
+
+    while line != null do
+      if line.trim().startsWith("//snippet:start") then
+        val startCol = line.indexOf("//snippet:start")
+        readLine()
+        markdown ++= "\n```scala\n"
+        while line != null && !line.trim().startsWith("//snippet:end") do
+          markdown ++= line.drop(startCol)
+          markdown ++= "\n"
+          readLine()
+
+        markdown ++= "```\n"
+        readLine()
+      else if line.trim().startsWith("//") && !line.trim().startsWith("//>") then
+        val startCol = line.indexOf("//") + 3
+        markdown ++= line.drop(startCol)
+        markdown ++= "\n"
+        readLine()
+      else if line.trim().startsWith("/* usage") then
+        val isSnippet = line.trim().startsWith("/* usage snippet")
+        val startCol = line.indexOf("/* usage")
+        readLine()
+
+        if line == null then sys.error("expected at least one line after usage")
+        var invocation = line.drop(startCol)
+        if invocation.endsWith("\\") then
+          invocation = invocation.dropRight(1)
+          readLine()
+          while line != null && line.endsWith("\\") do
+            invocation += " " + line.dropRight(1).trim()
+            readLine()
+          invocation += " " + line.trim()
+          readLine()
+        else
+          readLine()
+
+        if isSnippet then
+          markdown ++= "\n```\n"
+          markdown ++= changeInvocation(invocation)
+          markdown ++= "\n"
+
+        var expected = ""
+        while line != null && !line.trim().startsWith("*/") do
+          expected += line.drop(startCol)
+          expected += "\n"
+          if isSnippet then
+            markdown ++= line.drop(startCol)
+            markdown ++= "\n"
+          readLine()
+        readLine()
+        if isSnippet then
+          markdown ++= "```\n"
+        usageTests += ((invocation, expected))
+
+      else if line.isEmpty then
+        markdown ++= "\n"
+        readLine()
+      else
+        readLine()
+    ExampleFile(markdown.toString, usageTests.toSeq)
+
+def exampleProjects = Seq(
+  build.examples.basics.jvm,
+  build.examples.simple.jvm,
+  build.examples.routing.jvm,
+  build.examples.types.jvm,
+  build.examples.responsetypes.jvm,
+  build.examples.errors.jvm,
+  build.examples.websockets,
+  build.examples.sessionflash.jvm,
+  build.examples.endpoints,
+  build.examples.tls
+)
+
+// update actual readme from snippets in example apps
+def readme() = Task.Command:
+  val Include = """\[include:(.+)\]""".r
+
+  val allExampleFiles = Task.sequence(exampleProjects.map(_.exampleFile))()
+  val snippetMap = exampleProjects.map(_.moduleDir.last).zip(allExampleFiles).toMap
+
+  val lines = os.read.lines(Task.ctx().workspace / "readme.pre.md")
+  os.write.over(
+    Task.ctx().workspace / "README.md",
+    lines.map:
+      case Include(name) =>
+        snippetMap(name).markdown
+
+      case other => other
+    .mkString("\n")
+  )

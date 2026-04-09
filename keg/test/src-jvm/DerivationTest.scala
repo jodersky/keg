@@ -20,15 +20,14 @@ object DerivationTest extends TestSuite:
         val routes = keg.routes()
 
       assert(app.routes.endpoints.length == 1)
-      val selector = app.routes.endpoints.head.selector.asInstanceOf[keg.EndpointSelector.Simple]
+      val selector = app.routes.endpoints.head.asInstanceOf[keg.Endpoint].selector.asInstanceOf[keg.EndpointSelector.Simple]
       assert(selector.path == "/hello/:name/:suffix/*")
       assert(selector.methods == Seq("GET"))
 
-      val response = app.routes.endpoints.head.invoke(
+      val response = app.routes.endpoints.head.asInstanceOf[keg.Endpoint].invoke(
         keg.Request(
           method = "GET",
-          path = "/hello/Alice€/42/some/extra/path",
-          queryParams = MultiDict.empty,
+          target = "/hello/Alice€/42/some/extra/path",
           headers = MultiDict.empty,
           pathParams = Map("name" -> "Alice€", "suffix" -> "42"),
           remainingPathSegments = IndexedSeq("some", "extra", "path"),
@@ -36,7 +35,8 @@ object DerivationTest extends TestSuite:
           session = Map(),
           flash = Map(),
           getBody = () => java.io.ByteArrayInputStream(Array()),
-          remoteIp = java.net.InetAddress.getLoopbackAddress()
+          remoteIp = java.net.InetAddress.getLoopbackAddress(),
+          clientCertificate = None
         )
       )
       val bytes = java.io.ByteArrayOutputStream()
@@ -94,7 +94,7 @@ object DerivationTest extends TestSuite:
         val routes = keg.routes()
 
       assert(app.routes.endpoints.length == 1)
-      assert(app.routes.endpoints.head.selector.isInstanceOf[keg.model.EndpointSelector.WebSocketUpgrade])
+      assert(app.routes.endpoints.head.asInstanceOf[keg.Endpoint].selector.isInstanceOf[keg.model.EndpointSelector.WebSocketUpgrade])
 
     test("error annotations"):
       object app:
@@ -109,7 +109,7 @@ object DerivationTest extends TestSuite:
         val routes = keg.routes()
 
       assert(app.routes.endpoints.length == 2)
-      val selectors = app.routes.endpoints.map(_.selector)
+      val selectors = app.routes.endpoints.map(_.asInstanceOf[keg.Endpoint].selector)
       assert(selectors.exists {
         case keg.model.EndpointSelector.NotFound => true
         case _ => false

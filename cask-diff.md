@@ -1,22 +1,3 @@
-# keg
-
-A small web framework, merging ideas from
-[flask](https://flask.palletsprojects.com/en/stable/),
-[rocket](https://rocket.rs/) and especially reusing many ideas from
-[cask](https://github.com/com-lihaoyi/cask).
-
-Keg's focus is around extensible request-scoped state (e.g. adding the logged in
-user to a request, or checking authorization).
-
-## Managing state
-
-State management and dependency injection is often a key part of web frameworks
-that is prone to scope creep.
-
-Keg takes on a very limited role in state management: essentially, it only
-focuses on mechanisms to inject request-scoped state. Application state is not
-managed by keg, and users are free to use whatever they wish, be it plain
-classes with parameters or anything else.
 
 ## Differences with cask
 
@@ -205,28 +186,3 @@ drop Scala 2 support for cask.
 These changes led me to creating a new framework, `keg`. Essentially, keg is a
 different syntax sugar layer for cask. It still uses the same (or similar)
 request handling machinery from cask, and uses the same webserver.
-
-## Features
-
-- websockets
-- forms with automatic CSRF protection
-- signed cookies
-- interceptors
-
-## Internals
-
-- division of layers
-
-  (arrow means "depends on")
-
-  ```mermaid
-  graph LR
-    model[HTTP model and endpoints];
-    main[main HTTP dispatching];
-    derivation[syntax sugar]
-    derivation --> model;
-    main --> model;
-
-    derivation --> form[form utils];
-    derivation --> json[json];
-  ```

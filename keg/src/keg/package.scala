@@ -3,12 +3,14 @@ package keg
 export keg.model.Request
 export keg.model.Response
 export keg.model.Data
+export keg.model.ClientCertificate
 export keg.model.Cookie
 export keg.model.WsResponse
 export keg.model.Endpoint
 export keg.model.EndpointResult
 export keg.model.EndpointMeta
 export keg.model.EndpointSelector
+export keg.model.Recovery
 export keg.model.WebResponse
 export keg.model.Ws
 export keg.model.WsActor
@@ -37,8 +39,12 @@ export keg.forms.FormData
 // export keg.forms.FormPart
 // export keg.forms.FromForm
 
+export keg.derivation.abort
+
 def urlEncode(s: String): String =
   java.net.URLEncoder.encode(s, "UTF-8")
 
 def urlDecode(s: String): String =
   java.net.URLDecoder.decode(s, "UTF-8")
+
+export keg.util.url

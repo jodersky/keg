@@ -8,7 +8,7 @@ def echo(x: Int, req: keg.Request) =
   val z = new String(req.body.readAllBytes(), "utf8")
   s"Echo (param = $x, q = $y, body = $z)"
 
-val endpoints: Seq[keg.Endpoint] = keg.routes().endpoints
+val endpoints: Seq[keg.Endpoint | keg.Recovery] = keg.routes().endpoints
 
 @main
 def run() =

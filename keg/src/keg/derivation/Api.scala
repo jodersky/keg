@@ -63,6 +63,16 @@ enum Result[+A]:
   /** Respond immediately with the given response. */
   case Respond(response: WebResponse)
 
+  def map[B](f: A => B): Result[B] = this match
+    case Continue(value) => Continue(f(value))
+    case Abort(code, message) => Abort(code, message)
+    case Respond(response) => Respond(response)
+
+  def flatMap[B](f: A => Result[B]): Result[B] = this match
+    case Continue(value) => f(value)
+    case Abort(code, message) => Abort(code, message)
+    case Respond(response) => Respond(response)
+
 trait BaseApi:
 
   /** A type representing a "shared" context between all `FromRequest`s.
@@ -215,17 +225,41 @@ trait StandardFroms extends BaseApi:
     def fromRequest(req: Request, ctx: Context): Result[keg.forms.FormData] =
       val visitor = new keg.forms.FormDataVisitor()
 
+      try
+        keg.forms.FormParser.tryParse(
+          req.getBody(),
+          req.headers.get("content-type").getOrElse("application/x-www-form-urlencoded"),
+          visitor,
+          maxSize = 30*1024, // 30 KB
+          maxFileSize = 100*1024*1024 // 100 MB
+        ) match
+          case Left(_: keg.forms.FormParser.FormTooLargeException) =>
+            Result.Abort(413, "Form part is too large")
+          case Left(e: keg.forms.FormParser.InvalidFormEncodingException) =>
+            Result.Abort(400, s"form data is malformed: ${e.getMessage}")
+          case Right(data)    =>
+            Result.Continue(data)
+      catch case _: UnsupportedOperationException =>
+        // TODO: make this error handling more robust
+        Result.Abort(400, "Multipart form data is not supported by this endpoint")
+
+  /** Directory for storing uploaded files. */
+  def uploadDir: java.nio.file.Path = java.nio.file.Files.createTempDirectory("keg-uploads-")
+
+  given UploadFormFromRequest: FromRequest[keg.model.UploadFormData] with
+    def fromRequest(req: Request, ctx: Context): Result[keg.model.UploadFormData] =
+      val visitor = new keg.model.UploadFormData.Builder(uploadDir)
       keg.forms.FormParser.tryParse(
         req.getBody(),
-        "application/x-www-form-urlencoded", // TODO: get actual content type from request header
+        req.headers.get("content-type").getOrElse("application/x-www-form-urlencoded"),
         visitor,
         maxSize = 30*1024, // 30 KB
         maxFileSize = 100*1024*1024 // 100 MB
       ) match
         case Left(_: keg.forms.FormParser.FormTooLargeException) =>
-          Result.Abort(413, "Form part is too large")
+          Result.Abort(413, "Upload form part is too large")
         case Left(_: keg.forms.FormParser.InvalidFormEncodingException) =>
-          Result.Abort(400, "Form data is malformed")
+          Result.Abort(400, "Upload form data is malformed")
         case Right(data)    =>
           Result.Continue(data)
 
@@ -268,8 +302,35 @@ trait StandardFroms extends BaseApi:
   given wsToResponse: ToResponse[WsResponse] with
     def toResponse(ws: WsResponse, ctx: Context) = ws
 
+  given anyResponseToResponse: ToResponse[keg.model.WebResponse] with
+    def toResponse(response: keg.model.WebResponse, ctx: Context): WebResponse = response
+
 trait ExtraFroms extends StandardFroms:
 
+  given jsonValueFromRequest: FromRequest[ujson.Value] with
+    def fromRequest(req: Request, ctx: Context): Result[ujson.Value] =
+      try
+        val json = ujson.read(req.body)
+        Result.Continue(json)
+      catch
+        case e: ujson.ParseException =>
+          Result.Abort(400, s"Invalid JSON: ${e.getMessage}")
+        case e: Exception =>
+          Result.Abort(400, s"Error reading request body: ${e.getMessage}")
+
+  given jsonObjFromRequest: FromRequest[ujson.Obj] with
+    def fromRequest(req: Request, ctx: Context): Result[ujson.Obj] =
+      jsonValueFromRequest.fromRequest(req, ctx).flatMap: value =>
+        value match
+          case obj: ujson.Obj => Result.Continue(obj)
+          case _ => Result.Abort(400, "Expected JSON object")
+
+  given jsonArrFromRequest: FromRequest[ujson.Arr] with
+    def fromRequest(req: Request, ctx: Context): Result[ujson.Arr] =
+      jsonValueFromRequest.fromRequest(req, ctx).flatMap: value =>
+        value match
+          case arr: ujson.Arr => Result.Continue(arr)
+          case _ => Result.Abort(400, "Expected JSON array")
 
   given jsonFromRequest[A](using upickle.default.CaseClassReader[A]): FromRequest[A] with
     def fromRequest(req: Request, ctx: Context): Result[A] =

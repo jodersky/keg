@@ -1,7 +1,7 @@
 package keg.main
 
 object Secret:
-  private val hint = "You can generate a strong secret using `Secret.random().toBase64`, or `openssl rand -base64 32`."
+  private val hint = "You can generate a strong secret using `keg.Secret.random()`, or `openssl rand -base64 32`."
 
   def check(secret: String): Array[Byte] =
     val bytes = try

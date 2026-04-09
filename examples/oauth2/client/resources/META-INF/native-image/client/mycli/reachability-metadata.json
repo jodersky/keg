@@ -1,0 +1,803 @@
+{
+  "reflection": [
+    {
+      "type": "clip.derivation.default$",
+      "fields": [
+        {
+          "name": "absPathCompleter$lzy1"
+        },
+        {
+          "name": "arg$lzy1"
+        },
+        {
+          "name": "jFileCompleter$lzy1"
+        },
+        {
+          "name": "jPathCompleter$lzy1"
+        },
+        {
+          "name": "relPathCompleter$lzy1"
+        },
+        {
+          "name": "subPathCompleter$lzy1"
+        }
+      ]
+    },
+    {
+      "type": "com.sun.crypto.provider.AESCipher$General",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "com.sun.crypto.provider.ARCFOURCipher",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "com.sun.crypto.provider.ChaCha20Cipher$ChaCha20Poly1305",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "com.sun.crypto.provider.DESCipher",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "com.sun.crypto.provider.DESedeCipher",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "com.sun.crypto.provider.DHParameters",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "com.sun.crypto.provider.GaloisCounterMode$AESGCM",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "com.sun.crypto.provider.TlsMasterSecretGenerator",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "geny.ByteData$Chunks",
+      "fields": [
+        {
+          "name": "bytes$lzy1"
+        }
+      ]
+    },
+    {
+      "type": "java.lang.Boolean",
+      "jniAccessible": true,
+      "methods": [
+        {
+          "name": "getBoolean",
+          "parameterTypes": [
+            "java.lang.String"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "java.lang.ClassValue"
+    },
+    {
+      "type": "java.lang.String[]"
+    },
+    {
+      "type": "java.security.AlgorithmParametersSpi"
+    },
+    {
+      "type": "java.security.KeyStoreSpi"
+    },
+    {
+      "type": "os.Path$",
+      "fields": [
+        {
+          "name": "driveRoot$lzy1"
+        }
+      ]
+    },
+    {
+      "type": "os.Path[]"
+    },
+    {
+      "type": "os.package$_home$",
+      "fields": [
+        {
+          "name": "value$lzy1"
+        }
+      ]
+    },
+    {
+      "type": "requests.Requester$",
+      "fields": [
+        {
+          "name": "0bitmap$1"
+        }
+      ]
+    },
+    {
+      "type": "requests.Util$",
+      "fields": [
+        {
+          "name": "0bitmap$1"
+        }
+      ]
+    },
+    {
+      "type": "requests.package$",
+      "fields": [
+        {
+          "name": "0bitmap$1"
+        }
+      ]
+    },
+    {
+      "type": "scala.StringContext",
+      "fields": [
+        {
+          "name": "s$lzy1"
+        }
+      ]
+    },
+    {
+      "type": "scala.collection.immutable.ArraySeq$",
+      "fields": [
+        {
+          "name": "emptyImpl$lzy1"
+        }
+      ]
+    },
+    {
+      "type": "scala.io.Codec$",
+      "fields": [
+        {
+          "name": "fallbackSystemCodec$lzy1"
+        }
+      ]
+    },
+    {
+      "type": "scala.math.BigDecimal$",
+      "fields": [
+        {
+          "name": "cache$lzy1"
+        }
+      ]
+    },
+    {
+      "type": "scribe.ANSI$",
+      "fields": [
+        {
+          "name": "threadLocal$lzy1"
+        }
+      ]
+    },
+    {
+      "type": "scribe.ANSI$fg$",
+      "fields": [
+        {
+          "name": "Black$lzy2"
+        },
+        {
+          "name": "Blue$lzy2"
+        },
+        {
+          "name": "BrightBlue$lzy2"
+        },
+        {
+          "name": "BrightCyan$lzy2"
+        },
+        {
+          "name": "BrightGreen$lzy2"
+        },
+        {
+          "name": "BrightMagenta$lzy2"
+        },
+        {
+          "name": "BrightRed$lzy2"
+        },
+        {
+          "name": "BrightWhite$lzy2"
+        },
+        {
+          "name": "BrightYellow$lzy2"
+        },
+        {
+          "name": "Cyan$lzy2"
+        },
+        {
+          "name": "Gray$lzy2"
+        },
+        {
+          "name": "Green$lzy2"
+        },
+        {
+          "name": "Magenta$lzy2"
+        },
+        {
+          "name": "Red$lzy2"
+        },
+        {
+          "name": "White$lzy2"
+        },
+        {
+          "name": "Yellow$lzy2"
+        }
+      ]
+    },
+    {
+      "type": "scribe.LogRecord",
+      "fields": [
+        {
+          "name": "logOutput$lzy1"
+        }
+      ]
+    },
+    {
+      "type": "scribe.Logger",
+      "fields": [
+        {
+          "name": "isEmpty$lzy1"
+        }
+      ]
+    },
+    {
+      "type": "scribe.Logger$",
+      "fields": [
+        {
+          "name": "DefaultRootMinimumLevel$lzy1"
+        }
+      ]
+    },
+    {
+      "type": "scribe.Platform$",
+      "fields": [
+        {
+          "name": "cacheDirectory$lzy1"
+        },
+        {
+          "name": "scriptFile$lzy1"
+        },
+        {
+          "name": "supportsANSI$lzy1"
+        }
+      ]
+    },
+    {
+      "type": "scribe.Priority$",
+      "fields": [
+        {
+          "name": "Critical$lzy1"
+        },
+        {
+          "name": "Fallthrough$lzy1"
+        },
+        {
+          "name": "High$lzy1"
+        },
+        {
+          "name": "Highest$lzy1"
+        },
+        {
+          "name": "Important$lzy1"
+        },
+        {
+          "name": "Low$lzy1"
+        },
+        {
+          "name": "Lower$lzy1"
+        },
+        {
+          "name": "Lowest$lzy1"
+        },
+        {
+          "name": "Normal$lzy1"
+        }
+      ]
+    },
+    {
+      "type": "scribe.format.FormatBlock$Date$Standard$",
+      "fields": [
+        {
+          "name": "scribe$format$CachingFormatBlock$$cache$lzy1"
+        },
+        {
+          "name": "scribe$format$CachingFormatBlock$$lastTimeStamp$lzy1"
+        }
+      ]
+    },
+    {
+      "type": "scribe.format.Formatter$",
+      "fields": [
+        {
+          "name": "advanced$lzy1"
+        },
+        {
+          "name": "advancedTabbed$lzy1"
+        },
+        {
+          "name": "classic$lzy1"
+        },
+        {
+          "name": "colored$lzy1"
+        },
+        {
+          "name": "compact$lzy1"
+        },
+        {
+          "name": "enhanced$lzy1"
+        },
+        {
+          "name": "simple$lzy1"
+        },
+        {
+          "name": "strict$lzy1"
+        }
+      ]
+    },
+    {
+      "type": "scribe.format.package$",
+      "fields": [
+        {
+          "name": "closeBracket$lzy1"
+        },
+        {
+          "name": "openBracket$lzy1"
+        },
+        {
+          "name": "space$lzy1"
+        }
+      ]
+    },
+    {
+      "type": "scribe.mdc.MDC$",
+      "fields": [
+        {
+          "name": "global$lzy1"
+        }
+      ]
+    },
+    {
+      "type": "scribe.message.LazyMessage",
+      "fields": [
+        {
+          "name": "logOutput$lzy1"
+        },
+        {
+          "name": "value$lzy1"
+        }
+      ]
+    },
+    {
+      "type": "scribe.modify.LevelFilter$",
+      "fields": [
+        {
+          "name": "ExcludeAll$lzy1"
+        },
+        {
+          "name": "IncludeAll$lzy1"
+        }
+      ]
+    },
+    {
+      "type": "scribe.output.Color$Black$",
+      "fields": [
+        {
+          "name": "name$lzy1"
+        }
+      ]
+    },
+    {
+      "type": "scribe.output.Color$Blue$",
+      "fields": [
+        {
+          "name": "name$lzy2"
+        }
+      ]
+    },
+    {
+      "type": "scribe.output.Color$Cyan$",
+      "fields": [
+        {
+          "name": "name$lzy3"
+        }
+      ]
+    },
+    {
+      "type": "scribe.output.Color$Green$",
+      "fields": [
+        {
+          "name": "name$lzy4"
+        }
+      ]
+    },
+    {
+      "type": "scribe.output.ColoredOutput",
+      "fields": [
+        {
+          "name": "plainText$lzy2"
+        }
+      ]
+    },
+    {
+      "type": "scribe.output.CompositeOutput",
+      "fields": [
+        {
+          "name": "plainText$lzy1"
+        }
+      ]
+    },
+    {
+      "type": "scribe.output.LogOutput$",
+      "fields": [
+        {
+          "name": "NewLine$lzy1"
+        }
+      ]
+    },
+    {
+      "type": "scribe.package$",
+      "fields": [
+        {
+          "name": "lineSeparator$lzy1"
+        }
+      ]
+    },
+    {
+      "type": "sun.misc.Unsafe",
+      "fields": [
+        {
+          "name": "theUnsafe"
+        }
+      ]
+    },
+    {
+      "type": "sun.security.pkcs12.PKCS12KeyStore",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "sun.security.pkcs12.PKCS12KeyStore$DualFormatPKCS12",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "sun.security.provider.DSA$SHA224withDSA",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "sun.security.provider.DSA$SHA256withDSA",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "sun.security.provider.NativePRNG",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": [
+            "java.security.SecureRandomParameters"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "sun.security.provider.SHA",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "sun.security.provider.SHA2$SHA224",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "sun.security.provider.SHA2$SHA256",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "sun.security.provider.SHA5$SHA384",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "sun.security.provider.SHA5$SHA512",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "sun.security.provider.X509Factory",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "sun.security.rsa.PSSParameters",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "sun.security.rsa.RSAKeyFactory$Legacy",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "sun.security.rsa.RSAPSSSignature",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "sun.security.rsa.RSASignature$SHA224withRSA",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "sun.security.ssl.KeyManagerFactoryImpl$SunX509",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "sun.security.ssl.SSLContextImpl$DefaultSSLContext",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "sun.security.ssl.SSLContextImpl$TLSContext",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "sun.security.ssl.TrustManagerFactoryImpl$PKIXFactory",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "sun.security.x509.AuthorityInfoAccessExtension",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": [
+            "java.lang.Boolean",
+            "java.lang.Object"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "sun.security.x509.AuthorityKeyIdentifierExtension",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": [
+            "java.lang.Boolean",
+            "java.lang.Object"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "sun.security.x509.BasicConstraintsExtension",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": [
+            "java.lang.Boolean",
+            "java.lang.Object"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "sun.security.x509.CRLDistributionPointsExtension",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": [
+            "java.lang.Boolean",
+            "java.lang.Object"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "sun.security.x509.CertificatePoliciesExtension",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": [
+            "java.lang.Boolean",
+            "java.lang.Object"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "sun.security.x509.ExtendedKeyUsageExtension",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": [
+            "java.lang.Boolean",
+            "java.lang.Object"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "sun.security.x509.KeyUsageExtension",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": [
+            "java.lang.Boolean",
+            "java.lang.Object"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "sun.security.x509.NetscapeCertTypeExtension",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": [
+            "java.lang.Boolean",
+            "java.lang.Object"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "sun.security.x509.PrivateKeyUsageExtension",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": [
+            "java.lang.Boolean",
+            "java.lang.Object"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "sun.security.x509.SubjectKeyIdentifierExtension",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": [
+            "java.lang.Boolean",
+            "java.lang.Object"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "sun.util.resources.cldr.CalendarData"
+    }
+  ],
+  "resources": [
+    {
+      "glob": "META-INF/services/java.net.spi.InetAddressResolverProvider"
+    },
+    {
+      "glob": "META-INF/services/java.net.spi.URLStreamHandlerProvider"
+    },
+    {
+      "glob": "META-INF/services/java.nio.channels.spi.SelectorProvider"
+    },
+    {
+      "glob": "moduload.list"
+    }
+  ]
+}

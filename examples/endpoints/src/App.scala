@@ -1,5 +1,17 @@
 package app
 
+// Keg is structured as a layered framework. At the very top, you write your
+// application code by annotating methods with `@keg.get`, `@keg.post`, etc.
+// This is the most convenient way to write your application, but isn't what's
+// actually happening under the hood. Keg actually uses a different
+// representation for your endpoints. The annotations are just a thin layer that
+// generates the underlying data structures for you.
+//
+// If you want more control, you can skip the annotations and write the
+// underlying data structures directly. This is more verbose, but can be useful
+// for advanced use cases, such as building endpoints programmatically.
+
+//snippet:start
 val endpoints = Seq(
   keg.Endpoint(
     selector = keg.EndpointSelector.Simple("/", Seq("GET")),
@@ -34,7 +46,8 @@ val endpoints = Seq(
   )
 )
 
-val server = keg.Server(endpoints, debugMode = false)
+val server = keg.Server(endpoints)
+//snippet:end
 
 @main
 def main() =

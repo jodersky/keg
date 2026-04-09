@@ -91,28 +91,31 @@ object FormParser:
     body: InputStream,
     boundary: String,
     visitor: FormVisitor[R],
-    maxSize: Long = 10*1024, // excluding files content
-    maxFileSize: Long = 100*1024*1024, // *total* of all file parts
+    maxSize: Long = 10*1024, // max total bytes for all non-file content (headers + field values)
+    maxFileSize: Long = 100*1024*1024, // max bytes per file part
   ): R =
     val boundaryBytes = s"--$boundary".getBytes(US_ASCII)
 
     var byte = body.read()
 
-    var totalFieldBytesRead = 0L
-    var totalFileBytesRead = 0L
+    // Tracks bytes consumed for non-file content (headers, field values, boundary overhead)
+    var nonFileBytesRead = 0L
 
     val buffer = new ByteArrayOutputStream()
 
     var name: String = ""
     var fileName: String = null
-    var contentType: String = ""
 
+    // Reads the next byte from body, counting it against the non-file limit
     def readNext(): Unit =
       byte = body.read()
-      totalFieldBytesRead += 1
-      if totalFieldBytesRead > maxSize then
-        throw new FormTooLargeException(totalFieldBytesRead, maxSize)
+      nonFileBytesRead += 1
+      if nonFileBytesRead > maxSize then
+        throw new FormTooLargeException(nonFileBytesRead, maxSize)
 
+    // Tries to consume the given string exactly. Reads the first char from the
+    // current byte, not calling readNext first. Returns false immediately if
+    // any char doesn't match.
     def expect(str: String): Boolean =
       var i = 0
       while i < str.length && byte != -1 do
@@ -121,19 +124,27 @@ object FormParser:
         readNext()
       i == str.length
 
-    // Note: out of simplicity we assume that there are only the following
-    // headers, and in this order:
-    // 1. Content-Disposition, with name and optional filename
-    // 2. optional Content-Type
-    // While not strictly conforming to the spec, this should work for most
-    // practical cases. The RFC even suggests that only these two headers are
-    // commonly used.
-    def parseHeaders() =
-      buffer.reset()
-      if !expect("Content-Disposition: form-data; ") then
-        throw new InvalidFormEncodingException("Expected Content-Disposition header")
+    // Like expect, but matches ASCII letters case-insensitively.
+    def expectCI(str: String): Boolean =
+      var i = 0
+      while i < str.length && byte != -1 do
+        if byte.toChar.toLower != str.charAt(i).toLower then return false
+        i += 1
+        readNext()
+      i == str.length
 
-      if !expect("name=\"") then
+    def parseHeaders(): Unit =
+      buffer.reset()
+      // Skip any header lines before Content-Disposition
+      while !expectCI("Content-Disposition: form-data; ") do
+        if byte == -1 || byte == '\r' then
+          throw new InvalidFormEncodingException("Expected Content-Disposition header")
+        while byte != -1 && byte != '\r' do
+          readNext()
+        if byte == '\r' then readNext()
+        if byte == '\n' then readNext()
+
+      if !expectCI("name=\"") then
         throw new InvalidFormEncodingException("Expected name parameter in Content-Disposition")
       buffer.reset()
       while byte != -1 && byte != '"' do
@@ -142,56 +153,76 @@ object FormParser:
       name = decodeUrl(buffer.toString(UTF_8))
       readNext() // consume closing "
 
-      if expect("; filename=\"") then
-        buffer.reset()
-        while byte != -1 && byte != '"' do
-          buffer.write(byte)
-          readNext()
-        fileName = decodeUrl(buffer.toString(UTF_8))
-        readNext() // consume closing "
+      // Optional filename parameter: either filename="..." (raw UTF-8) or
+      // filename*=charset'language'percent-encoded (RFC 5987)
+      if expectCI("; filename") then
+        if expect("*=") then
+          // RFC 5987: charset'language'percent-encoded-value
+          buffer.reset()
+          while byte != -1 && byte != '\'' do
+            buffer.write(byte)
+            readNext()
+          val charset = buffer.toString(US_ASCII).trim
+          readNext() // consume first '
+          while byte != -1 && byte != '\'' do // skip language tag
+            readNext()
+          readNext() // consume second '
+          buffer.reset()
+          while byte != -1 && byte != '\r' && byte != ';' do
+            buffer.write(byte)
+            readNext()
+          fileName = java.net.URLDecoder.decode(buffer.toString(US_ASCII), charset)
+        else if expect("=\"") then
+          // Quoted filename: raw UTF-8 bytes, not URL-encoded
+          buffer.reset()
+          while byte != -1 && byte != '"' do
+            buffer.write(byte)
+            readNext()
+          fileName = buffer.toString(UTF_8)
+          readNext() // consume closing "
+        else
+          throw new InvalidFormEncodingException("Expected filename parameter value")
       else
         fileName = null
 
       if !expect("\r\n") then
         throw new InvalidFormEncodingException("Expected CRLF after Content-Disposition")
 
-      if expect("Content-Type: ") then
-        buffer.reset()
+      // Skip any remaining headers (e.g. Content-Type, custom headers) until blank line
+      while byte != -1 && byte != '\r' do
         while byte != -1 && byte != '\r' do
-          buffer.write(byte)
           readNext()
-        contentType = buffer.toString(UTF_8).trim
-        // consume CRLF
-        if !expect("\r\n") then
-          throw new InvalidFormEncodingException("Expected CRLF after Content-Type")
+        if byte == '\r' then readNext() // consume \r
+        if byte == '\n' then readNext() // consume \n
 
       if !expect("\r\n") then
         throw new InvalidFormEncodingException("Expected blank line after headers")
     end parseHeaders
 
-    var stream: java.io.OutputStream = null
-    var streamPos: Long = 0
+    // Parse part content until the next boundary, writing bytes to `out`.
+    // `limit` is the max number of bytes that may be written; exceeding it
+    // throws FormTooLargeException. Returns true if the final boundary was
+    // reached, false if more parts follow.
+    def parseContent(out: java.io.OutputStream, limit: Long): Boolean =
+      var bytesWritten = 0L
 
-    inline def writeByte(b: Int): Unit =
-      if streamPos >= maxFileSize then
-        throw new FormTooLargeException(streamPos, maxFileSize)
-      stream.write(b)
-      streamPos += 1
+      inline def writeByte(b: Int): Unit =
+        if bytesWritten >= limit then
+          throw new FormTooLargeException(bytesWritten + 1, limit)
+        out.write(b)
+        bytesWritten += 1
 
-    inline def writeBytes(bytes: Array[Byte], offset: Int, length: Int): Unit =
-      if streamPos + length > maxFileSize then
-        throw new FormTooLargeException(streamPos + length, maxFileSize)
-      stream.write(bytes, offset, length)
-      streamPos += length
+      inline def writeBytes(bytes: Array[Byte], offset: Int, length: Int): Unit =
+        if bytesWritten + length > limit then
+          throw new FormTooLargeException(bytesWritten + length, limit)
+        out.write(bytes, offset, length)
+        bytesWritten += length
 
-    // Parse content until the next boundary, returns true if final boundary
-    // reached
-    def parseContent(): Boolean =
       var matchedBoundary = false
       while !matchedBoundary && byte != -1 do
         while byte != -1 && byte != '\r' do
           writeByte(byte)
-          byte = body.read() // no readNext here, as part bytes are not counted
+          byte = body.read() // file bytes are not counted against nonFileBytesRead
         if byte == '\r' then
           byte = body.read() // consume '\r'
           if byte == '\n' then
@@ -205,7 +236,7 @@ object FormParser:
                 i += 1
                 byte = body.read()
             if !matchedBoundary then
-              // false alarm, write bytes to output
+              // false alarm: the CRLF + partial boundary bytes belong to content
               writeByte('\r')
               writeByte('\n')
               writeBytes(boundaryBytes, 0, i)
@@ -213,35 +244,41 @@ object FormParser:
             writeByte('\r')
         end if
       end while
-      if matchedBoundary then
-        if expect("--\r\n") then
-          // final boundary
-          true
-        else if expect("\r\n") then
-          // continue to next part
-          false
-        else
-          throw new InvalidFormEncodingException("Expected CRLF or -- after boundary")
-      else
+
+      if !matchedBoundary then
         throw new InvalidFormEncodingException("Unexpected end of stream while looking for boundary")
+
+      // Boundary suffix: "--\r\n" means final, "\r\n" means more parts follow
+      if expect("--") then
+        if !expect("\r\n") then
+          throw new InvalidFormEncodingException("Expected CRLF after final boundary")
+        true
+      else if expect("\r\n") then
+        false
+      else
+        throw new InvalidFormEncodingException("Expected CRLF or -- after boundary")
     end parseContent
 
     if !expect(s"--$boundary\r\n") then
       throw new InvalidFormEncodingException("Expected starting boundary")
-    while byte != -1 do
+
+    var done = false
+    while !done && byte != -1 do
       parseHeaders()
 
       if fileName != null then
-        buffer.reset()
-        parseContent()
-        val value = buffer.toString(UTF_8)
-        visitor.visitField(name, value)
-      else
-        stream = visitor.visitFileBegin(name, fileName)
+        // File part: stream content to the visitor's output, limited per file
+        val out = visitor.visitFileBegin(name, fileName)
         try
-          parseContent()
+          done = parseContent(out, maxFileSize)
         finally
           visitor.visitFileEnd()
+      else
+        // Plain field: collect value into buffer, limited by remaining non-file budget
+        buffer.reset()
+        done = parseContent(buffer, maxSize - nonFileBytesRead)
+        nonFileBytesRead += buffer.size()
+        visitor.visitField(name, buffer.toString(UTF_8))
     end while
 
     visitor.visitEnd()

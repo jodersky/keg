@@ -14,6 +14,8 @@ case class MultiDict[K, V](underlying: collection.Map[K, Iterable[V]]):
   def getOrElse(key: K, default: => V): V = get(key).getOrElse(default)
   def getAll(key: K): Iterable[V] = underlying.getOrElse(key, Seq.empty)
 
+  def contains(key: K): Boolean = underlying.contains(key)
+
   def apply(key: K): V = get(key).getOrElse(throw new NoSuchElementException(s"key not found: $key"))
 
   def map(fn: (K, V) => (K, V)): MultiDict[K, V] =

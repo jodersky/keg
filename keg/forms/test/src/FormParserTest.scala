@@ -107,200 +107,296 @@ object FormParserTest extends TestSuite:
         val result = FormParser.parseUrlEncoded(stream, TestVisitor())
         assert(result == Seq(("item", "apple"), ("item", "banana"), ("item", "cherry")))
 
-    // test("parseMultipart"):
-    //   test("text fields only"):
-    //     val boundary = "----WebKitFormBoundary7MA4YWxkTrZu0gW"
-    //     val body = (
-    //       "------WebKitFormBoundary7MA4YWxkTrZu0gW\r\n" +
-    //       "Content-Disposition: form-data; name=\"username\"\r\n" +
-    //       "\r\n" +
-    //       "alice\r\n" +
-    //       "------WebKitFormBoundary7MA4YWxkTrZu0gW\r\n" +
-    //       "Content-Disposition: form-data; name=\"email\"\r\n" +
-    //       "\r\n" +
-    //       "alice@example.com\r\n" +
-    //       "------WebKitFormBoundary7MA4YWxkTrZu0gW--\r\n"
-    //     )
-    //     val stream = new ByteArrayInputStream(body.getBytes(StandardCharsets.UTF_8))
-    //     val result = FormParser.parseMultipart(
-    //       stream, boundary, TestVisitor()
-    //     )
+    test("parseMultipart"):
+      test("text fields only"):
+        val boundary = "----WebKitFormBoundary7MA4YWxkTrZu0gW"
+        val body = (
+          "------WebKitFormBoundary7MA4YWxkTrZu0gW\r\n" +
+          "Content-Disposition: form-data; name=\"username\"\r\n" +
+          "\r\n" +
+          "alice\r\n" +
+          "------WebKitFormBoundary7MA4YWxkTrZu0gW\r\n" +
+          "Content-Disposition: form-data; name=\"email\"\r\n" +
+          "\r\n" +
+          "alice@example.com\r\n" +
+          "------WebKitFormBoundary7MA4YWxkTrZu0gW--\r\n"
+        )
+        val stream = new ByteArrayInputStream(body.getBytes(StandardCharsets.UTF_8))
+        val result = FormParser.parseMultipart(
+          stream, boundary, TestVisitor()
+        )
 
-    //     assert(result.length == 2)
-    //     result(0) match
-    //       case (name, value) =>
-    //         assert(name == "username")
-    //         assert(value == "alice")
-    //       case _ => sys.error("Expected Field")
+        assert(result.length == 2)
+        val (name0, value0) = result(0)
+        assert(name0 == "username")
+        assert(value0 == "alice")
 
-    //     result(1) match
-    //       case (name, value) =>
-    //         assert(name == "email")
-    //         assert(value == "alice@example.com")
-    //       case _ => sys.error("Expected Field")
+        val (name1, value1) = result(1)
+        assert(name1 == "email")
+        assert(value1 == "alice@example.com")
 
-    //   test("file upload"):
-    //     val boundary = "----WebKitFormBoundary7MA4YWxkTrZu0gW"
-    //     val fileContent = "Hello, this is file content!€"
-    //     val body = (
-    //       "------WebKitFormBoundary7MA4YWxkTrZu0gW\r\n" +
-    //       "Content-Disposition: form-data; name=\"document\"; filename=\"test.txt\"\r\n" +
-    //       "Content-Type: text/plain\r\n" +
-    //       "\r\n" +
-    //       fileContent + "\r\n" +
-    //       "------WebKitFormBoundary7MA4YWxkTrZu0gW--\r\n"
-    //     )
+      test("file upload"):
+        val boundary = "----WebKitFormBoundary7MA4YWxkTrZu0gW"
+        val fileContent = "Hello, this is file content!€"
+        val body = (
+          "------WebKitFormBoundary7MA4YWxkTrZu0gW\r\n" +
+          "Content-Disposition: form-data; name=\"document\"; filename=\"test.txt\"\r\n" +
+          "Content-Type: text/plain\r\n" +
+          "\r\n" +
+          fileContent + "\r\n" +
+          "------WebKitFormBoundary7MA4YWxkTrZu0gW--\r\n"
+        )
 
-    //     val stream = new ByteArrayInputStream(body.getBytes(StandardCharsets.UTF_8))
-    //     val result = FormParser.parseMultipart(
-    //       stream, boundary, TestVisitor()
-    //     )
+        val stream = new ByteArrayInputStream(body.getBytes(StandardCharsets.UTF_8))
+        val result = FormParser.parseMultipart(
+          stream, boundary, TestVisitor()
+        )
 
-    //     assert(result.length == 1)
-    //     result(0) match
-    //       case (name, value) =>
-    //         assert(name == "document")
-    //         assert(value == fileContent)
-    //       case _ => sys.error("Expected File")
+        assert(result.length == 1)
+        val (name0, value0) = result(0)
+        assert(name0 == "document")
+        assert(value0 == fileContent)
 
-    //   test("mixed fields and files"):
-    //     val boundary = "----WebKitFormBoundary7MA4YWxkTrZu0gW"
-    //     val body = (
-    //       "------WebKitFormBoundary7MA4YWxkTrZu0gW\r\n" +
-    //       "Content-Disposition: form-data; name=\"title\"\r\n" +
-    //       "\r\n" +
-    //       "My Document\r\n" +
-    //       "------WebKitFormBoundary7MA4YWxkTrZu0gW\r\n" +
-    //       "Content-Disposition: form-data; name=\"file\"; filename=\"doc.pdf\"\r\n" +
-    //       "Content-Type: application/pdf\r\n" +
-    //       "\r\n" +
-    //       "PDF binary content here\r\n" +
-    //       "------WebKitFormBoundary7MA4YWxkTrZu0gW--\r\n"
-    //     )
+      test("mixed fields and files"):
+        val boundary = "----WebKitFormBoundary7MA4YWxkTrZu0gW"
+        val body = (
+          "------WebKitFormBoundary7MA4YWxkTrZu0gW\r\n" +
+          "Content-Disposition: form-data; name=\"title\"\r\n" +
+          "\r\n" +
+          "My Document\r\n" +
+          "------WebKitFormBoundary7MA4YWxkTrZu0gW\r\n" +
+          "Content-Disposition: form-data; name=\"file\"; filename=\"doc.pdf\"\r\n" +
+          "Content-Type: application/pdf\r\n" +
+          "\r\n" +
+          "PDF binary content here\r\n" +
+          "------WebKitFormBoundary7MA4YWxkTrZu0gW--\r\n"
+        )
 
-    //     val stream = new ByteArrayInputStream(body.getBytes(StandardCharsets.UTF_8))
-    //     val result = FormParser.parseMultipart(
-    //       stream, boundary, TestVisitor()
-    //     )
+        val stream = new ByteArrayInputStream(body.getBytes(StandardCharsets.UTF_8))
+        val result = FormParser.parseMultipart(
+          stream, boundary, TestVisitor()
+        )
 
-    //     assert(result.length == 2)
-    //     result(0) match
-    //       case (name, value) =>
-    //         assert(name == "title")
-    //         assert(value == "My Document")
-    //       case _ => sys.error("Expected Field")
-    //     result(1) match
-    //       case (name, value) =>
-    //         assert(name == "file")
-    //         assert(value == "PDF binary content here")
-    //       case _ => sys.error("Expected File")
+        assert(result.length == 2)
+        val (name0, value0) = result(0)
+        assert(name0 == "title")
+        assert(value0 == "My Document")
+        val (name1, value1) = result(1)
+        assert(name1 == "file")
+        assert(value1 == "PDF binary content here")
 
-    //   test("file size limit"):
-    //     val boundary = "----WebKitFormBoundary7MA4YWxkTrZu0gW"
-    //     val largeContent = "x" * 2000
-    //     val body = (
-    //       "------WebKitFormBoundary7MA4YWxkTrZu0gW\r\n" +
-    //       "Content-Disposition: form-data; name=\"bigfile\"; filename=\"large.txt\"\r\n" +
-    //       "Content-Type: text/plain\r\n" +
-    //       "\r\n" +
-    //       largeContent + "\r\n" +
-    //       "------WebKitFormBoundary7MA4YWxkTrZu0gW--\r\n"
-    //     )
+      test("file size limit"):
+        val boundary = "----WebKitFormBoundary7MA4YWxkTrZu0gW"
+        val largeContent = "x" * 2000
+        val body = (
+          "------WebKitFormBoundary7MA4YWxkTrZu0gW\r\n" +
+          "Content-Disposition: form-data; name=\"bigfile\"; filename=\"large.txt\"\r\n" +
+          "Content-Type: text/plain\r\n" +
+          "\r\n" +
+          largeContent + "\r\n" +
+          "------WebKitFormBoundary7MA4YWxkTrZu0gW--\r\n"
+        )
 
-    //     val stream = new ByteArrayInputStream(body.getBytes(StandardCharsets.UTF_8))
-    //     try
-    //       FormParser.parseMultipart(
-    //         stream, boundary, TestVisitor(),
-    //         maxFileSize = 1000
-    //       )
-    //       sys.error("Should have thrown FormTooLargeException")
-    //     catch
-    //       case e: FormParser.FormTooLargeException =>
+        val stream = new ByteArrayInputStream(body.getBytes(StandardCharsets.UTF_8))
+        try
+          FormParser.parseMultipart(
+            stream, boundary, TestVisitor(),
+            maxFileSize = 1000
+          )
+          sys.error("Should have thrown FormTooLargeException")
+        catch
+          case e: FormParser.FormTooLargeException =>
 
-    //   test("missing boundary"):
-    //     val boundary = "----WebKitFormBoundary7MA4YWxkTrZu0gW"
-    //     val body = "This is not multipart data at all"
-    //     val stream = new ByteArrayInputStream(body.getBytes(StandardCharsets.UTF_8))
-    //     assertThrows[FormParser.InvalidFormEncodingException]:
-    //       FormParser.parseMultipart(
-    //         stream, boundary, TestVisitor()
-    //       )
+      test("missing boundary"):
+        val boundary = "----WebKitFormBoundary7MA4YWxkTrZu0gW"
+        val body = "This is not multipart data at all"
+        val stream = new ByteArrayInputStream(body.getBytes(StandardCharsets.UTF_8))
+        assertThrows[FormParser.InvalidFormEncodingException]:
+          FormParser.parseMultipart(
+            stream, boundary, TestVisitor()
+          )
 
-    //   test("special characters in field values"):
-    //     val boundary = "----WebKitFormBoundary7MA4YWxkTrZu0gW"
-    //     val specialValue = "Line1\r\n你好世界\r\nLine3"
-    //     val body = (
-    //       "------WebKitFormBoundary7MA4YWxkTrZu0gW\r\n" +
-    //       "Content-Disposition: form-data; name=\"multiline\"\r\n" +
-    //       "\r\n" +
-    //       specialValue + "\r\n" +
-    //       "------WebKitFormBoundary7MA4YWxkTrZu0gW--\r\n"
-    //     )
+      test("special characters in field values"):
+        val boundary = "----WebKitFormBoundary7MA4YWxkTrZu0gW"
+        val specialValue = "Line1\r\n你好世界\r\nLine3"
+        val body = (
+          "------WebKitFormBoundary7MA4YWxkTrZu0gW\r\n" +
+          "Content-Disposition: form-data; name=\"multiline\"\r\n" +
+          "\r\n" +
+          specialValue + "\r\n" +
+          "------WebKitFormBoundary7MA4YWxkTrZu0gW--\r\n"
+        )
 
-    //     val stream = new ByteArrayInputStream(body.getBytes(StandardCharsets.UTF_8))
-    //     val result = FormParser.parseMultipart(
-    //       stream, boundary, TestVisitor()
-    //     )
+        val stream = new ByteArrayInputStream(body.getBytes(StandardCharsets.UTF_8))
+        val result = FormParser.parseMultipart(
+          stream, boundary, TestVisitor()
+        )
 
-    //     assert(result.length == 1)
-    //     result(0) match
-    //       case (name, value) =>
-    //         assert(name == "multiline")
-    //         assert(value == specialValue)
-    //       case _ => sys.error("Expected Field")
+        assert(result.length == 1)
+        val (name0, value0) = result(0)
+        assert(name0 == "multiline")
+        assert(value0 == specialValue)
 
-    //   test("special characters in file content"):
-    //     val boundary = "----WebKitFormBoundary7MA4YWxkTrZu0gW"
-    //     val specialContent = "Binary data with special chars: \r\n\u0000\u0001\u0002"
-    //     val body = (
-    //       "------WebKitFormBoundary7MA4YWxkTrZu0gW\r\n" +
-    //       "Content-Disposition: form-data; name=\"file\"; filename=\"special.bin\"\r\n" +
-    //       "Content-Type: application/octet-stream\r\n" +
-    //       "\r\n" +
-    //       specialContent + "\r\n" +
-    //       "------WebKitFormBoundary7MA4YWxkTrZu0gW--\r\n"
-    //     )
+      test("special characters in file content"):
+        val boundary = "----WebKitFormBoundary7MA4YWxkTrZu0gW"
+        val specialContent = "Binary data with special chars: \r\n\u0000\u0001\u0002"
+        val body = (
+          "------WebKitFormBoundary7MA4YWxkTrZu0gW\r\n" +
+          "Content-Disposition: form-data; name=\"file\"; filename=\"special.bin\"\r\n" +
+          "Content-Type: application/octet-stream\r\n" +
+          "\r\n" +
+          specialContent + "\r\n" +
+          "------WebKitFormBoundary7MA4YWxkTrZu0gW--\r\n"
+        )
 
-    //     val stream = new ByteArrayInputStream(body.getBytes(StandardCharsets.UTF_8))
-    //     val result = FormParser.parseMultipart(
-    //       stream, boundary, TestVisitor()
-    //     )
+        val stream = new ByteArrayInputStream(body.getBytes(StandardCharsets.UTF_8))
+        val result = FormParser.parseMultipart(
+          stream, boundary, TestVisitor()
+        )
 
-    //     assert(result.length == 1)
-    //     result(0) match
-    //       case (name, value) =>
-    //         assert(name == "file")
-    //         assert(value == specialContent)
-    //       case _ => sys.error("Expected File")
+        assert(result.length == 1)
+        val (name0, value0) = result(0)
+        assert(name0 == "file")
+        assert(value0 == specialContent)
 
-    //   test("multiple files with same field name"):
-    //     val boundary = "----WebKitFormBoundary7MA4YWxkTrZu0gW"
-    //     val body = (
-    //       "------WebKitFormBoundary7MA4YWxkTrZu0gW\r\n" +
-    //       "Content-Disposition: form-data; name=\"files\"; filename=\"file1.txt\"\r\n" +
-    //       "Content-Type: text/plain\r\n" +
-    //       "\r\n" +
-    //       "Content of file 1\r\n" +
-    //       "------WebKitFormBoundary7MA4YWxkTrZu0gW\r\n" +
-    //       "Content-Disposition: form-data; name=\"files\"; filename=\"file1.txt\"\r\n" +
-    //       "Content-Type: text/plain\r\n" +
-    //       "\r\n" +
-    //       "Content of file 2\r\n" +
-    //       "------WebKitFormBoundary7MA4YWxkTrZu0gW--\r\n"
-    //     )
+      test("multiple files with same field name"):
+        val boundary = "----WebKitFormBoundary7MA4YWxkTrZu0gW"
+        val body = (
+          "------WebKitFormBoundary7MA4YWxkTrZu0gW\r\n" +
+          "Content-Disposition: form-data; name=\"files\"; filename=\"file1.txt\"\r\n" +
+          "Content-Type: text/plain\r\n" +
+          "\r\n" +
+          "Content of file 1\r\n" +
+          "------WebKitFormBoundary7MA4YWxkTrZu0gW\r\n" +
+          "Content-Disposition: form-data; name=\"files\"; filename=\"file2.txt\"\r\n" +
+          "Content-Type: text/plain\r\n" +
+          "\r\n" +
+          "Content of file 2\r\n" +
+          "------WebKitFormBoundary7MA4YWxkTrZu0gW--\r\n"
+        )
 
-    //     val stream = new ByteArrayInputStream(body.getBytes(StandardCharsets.UTF_8))
-    //     val result = FormParser.parseMultipart(
-    //       stream, boundary, TestVisitor()
-    //     )
-    //     assert(result.length == 2)
-    //     result(0) match
-    //       case (name, value) =>
-    //         assert(name == "files")
-    //         assert(value == "Content of file 1")
-    //       case _ => sys.error("Expected File")
-    //     result(1) match
-    //       case (name, value) =>
-    //         assert(name == "files")
-    //         assert(value == "Content of file 2")
-    //       case _ => sys.error("Expected File")
+        val stream = new ByteArrayInputStream(body.getBytes(StandardCharsets.UTF_8))
+        val result = FormParser.parseMultipart(
+          stream, boundary, TestVisitor()
+        )
+        assert(result.length == 2)
+        val (name0, value0) = result(0)
+        assert(name0 == "files")
+        assert(value0 == "Content of file 1")
+        val (name1, value1) = result(1)
+        assert(name1 == "files")
+        assert(value1 == "Content of file 2")
+
+      test("non-ascii filename in quotes"):
+        val boundary = "----WebKitFormBoundary7MA4YWxkTrZu0gW"
+        val body = (
+          "------WebKitFormBoundary7MA4YWxkTrZu0gW\r\n" +
+          "Content-Disposition: form-data; name=\"file\"; filename=\"tëst_你好.txt\"\r\n" +
+          "Content-Type: text/plain\r\n" +
+          "\r\n" +
+          "content\r\n" +
+          "------WebKitFormBoundary7MA4YWxkTrZu0gW--\r\n"
+        )
+        val stream = new ByteArrayInputStream(body.getBytes(StandardCharsets.UTF_8))
+        val visitor = TestVisitor()
+        FormParser.parseMultipart(stream, boundary, visitor)
+        val (_, filename, _) = visitor.files(0)
+        assert(filename == "tëst_你好.txt")
+
+      test("non-ascii filename via RFC 5987"):
+        val boundary = "----WebKitFormBoundary7MA4YWxkTrZu0gW"
+        val body = (
+          "------WebKitFormBoundary7MA4YWxkTrZu0gW\r\n" +
+          "Content-Disposition: form-data; name=\"file\"; filename*=UTF-8''t%C3%ABst_%E4%BD%A0%E5%A5%BD.txt\r\n" +
+          "Content-Type: text/plain\r\n" +
+          "\r\n" +
+          "content\r\n" +
+          "------WebKitFormBoundary7MA4YWxkTrZu0gW--\r\n"
+        )
+        val stream = new ByteArrayInputStream(body.getBytes(StandardCharsets.UTF_8))
+        val visitor = TestVisitor()
+        FormParser.parseMultipart(stream, boundary, visitor)
+        val (_, filename, _) = visitor.files(0)
+        assert(filename == "tëst_你好.txt")
+
+      test("headers are matched case-insensitively"):
+        val boundary = "----WebKitFormBoundary7MA4YWxkTrZu0gW"
+        val body = (
+          "------WebKitFormBoundary7MA4YWxkTrZu0gW\r\n" +
+          "content-disposition: form-data; NAME=\"field\"; FILENAME=\"test.txt\"\r\n" +
+          "\r\n" +
+          "hello\r\n" +
+          "------WebKitFormBoundary7MA4YWxkTrZu0gW--\r\n"
+        )
+        val stream = new ByteArrayInputStream(body.getBytes(StandardCharsets.UTF_8))
+        val visitor = TestVisitor()
+        FormParser.parseMultipart(stream, boundary, visitor)
+        assert(visitor.files.length == 1)
+        val (name, filename, content) = visitor.files(0)
+        assert(name == "field")
+        assert(filename == "test.txt")
+        assert(content == "hello")
+
+      test("headers before content-disposition are ignored"):
+        val boundary = "----WebKitFormBoundary7MA4YWxkTrZu0gW"
+        val body = (
+          "------WebKitFormBoundary7MA4YWxkTrZu0gW\r\n" +
+          "X-Custom-Header: some-value\r\n" +
+          "Content-Disposition: form-data; name=\"field\"\r\n" +
+          "\r\n" +
+          "hello\r\n" +
+          "------WebKitFormBoundary7MA4YWxkTrZu0gW--\r\n"
+        )
+        val stream = new ByteArrayInputStream(body.getBytes(StandardCharsets.UTF_8))
+        val result = FormParser.parseMultipart(stream, boundary, TestVisitor())
+        assert(result == Seq(("field", "hello")))
+
+      test("extra headers are ignored"):
+        val boundary = "----WebKitFormBoundary7MA4YWxkTrZu0gW"
+        val body = (
+          "------WebKitFormBoundary7MA4YWxkTrZu0gW\r\n" +
+          "Content-Disposition: form-data; name=\"field\"\r\n" +
+          "X-Custom-Header: some-value\r\n" +
+          "\r\n" +
+          "hello\r\n" +
+          "------WebKitFormBoundary7MA4YWxkTrZu0gW--\r\n"
+        )
+        val stream = new ByteArrayInputStream(body.getBytes(StandardCharsets.UTF_8))
+        val result = FormParser.parseMultipart(stream, boundary, TestVisitor())
+        assert(result == Seq(("field", "hello")))
+
+      test("multiple extra headers are ignored"):
+        val boundary = "----WebKitFormBoundary7MA4YWxkTrZu0gW"
+        val body = (
+          "------WebKitFormBoundary7MA4YWxkTrZu0gW\r\n" +
+          "Content-Disposition: form-data; name=\"file\"; filename=\"test.txt\"\r\n" +
+          "Content-Type: text/plain\r\n" +
+          "Content-Transfer-Encoding: binary\r\n" +
+          "X-Custom-Header: value\r\n" +
+          "\r\n" +
+          "content\r\n" +
+          "------WebKitFormBoundary7MA4YWxkTrZu0gW--\r\n"
+        )
+        val stream = new ByteArrayInputStream(body.getBytes(StandardCharsets.UTF_8))
+        val visitor = TestVisitor()
+        FormParser.parseMultipart(stream, boundary, visitor)
+        assert(visitor.files.length == 1)
+        val (name, filename, content) = visitor.files(0)
+        assert(name == "file")
+        assert(filename == "test.txt")
+        assert(content == "content")
+
+      test("extra headers count toward max size"):
+        val boundary = "----WebKitFormBoundary7MA4YWxkTrZu0gW"
+        val extraHeader = "X-Padding: " + "x" * 500 + "\r\n"
+        val body = (
+          "------WebKitFormBoundary7MA4YWxkTrZu0gW\r\n" +
+          "Content-Disposition: form-data; name=\"field\"\r\n" +
+          extraHeader +
+          "\r\n" +
+          "value\r\n" +
+          "------WebKitFormBoundary7MA4YWxkTrZu0gW--\r\n"
+        )
+        val stream = new ByteArrayInputStream(body.getBytes(StandardCharsets.UTF_8))
+        assertThrows[FormParser.FormTooLargeException]:
+          FormParser.parseMultipart(stream, boundary, TestVisitor(), maxSize = 100)

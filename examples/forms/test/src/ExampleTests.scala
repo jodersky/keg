@@ -20,3 +20,14 @@ object ExampleTests extends TestSuite:
         )
         assert(response.statusCode == 200)
         assert(response.text() == "Hello, Alice! Value is: 42")
+
+    test("File upload"):
+      withServer(app.server): baseUrl =>
+        val response = requests.post(
+          url = s"$baseUrl/upload",
+          data = requests.MultiPart(
+            requests.MultiItem("file", "This is the file content.", filename = "test.txt")
+          )
+        )
+        assert(response.statusCode == 200)
+        assert(response.text() == "File content is: This is the file content.")

@@ -31,8 +31,7 @@ import keg.util.MultiDict
 case class Request(
     // exchange: HttpServerExchange,
     method: String,
-    path: String,
-    queryParams: MultiDict[String, String],
+    target: String, // the raw request target (e.g. "/path?query=string"), before URL decoding
     headers: MultiDict[String, String],
     pathParams: Map[String, String],
     remainingPathSegments: collection.IndexedSeq[String],
@@ -40,6 +39,24 @@ case class Request(
     session: Map[String, String],
     flash: Map[String, String],
     getBody: () => java.io.InputStream,
-    remoteIp: java.net.InetAddress
+    remoteIp: java.net.InetAddress,
+    clientCertificate: Option[ClientCertificate]
 ):
+
+  private val qi = target.indexOf('?')
+
+  val path: String =
+    val raw = if qi == -1 then target else target.substring(0, qi)
+    java.net.URLDecoder.decode(raw, "UTF-8")
+
+  val queryString: String =
+    if qi == -1 then "" else target.substring(qi + 1)
+
+  val queryParams: MultiDict[String, String] =
+    if qi == -1 then MultiDict.empty
+    else keg.util.Util.decodeQueryString(queryString)
+
   def body = getBody()
+
+  def text(maxLength: Int = 30*1024): String =
+    new String(body.readNBytes(maxLength), "UTF-8")

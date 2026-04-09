@@ -23,7 +23,6 @@ case class Limits(
 class UhttpTransport(
   listeners: Seq[Listener],
   handler: Request => WebResponse,
-  log: String => Unit,
   limits: Limits = Limits(),
   workerPool: java.util.concurrent.ExecutorService = java.util.concurrent.Executors.newCachedThreadPool()
 ) extends Transport:
@@ -33,24 +32,26 @@ class UhttpTransport(
     serverSockets = for listener <- listeners yield
       listener match
         case Listener.Http(host, port) =>
-          log(s"Creating HTTP listener on $host:$port")
           val s = new java.net.ServerSocket()
           s.setReuseAddress(true)
           s.bind(new java.net.InetSocketAddress(host, port), 50)
           (listener, s)
-        case Listener.Https(host, port, key, cert) =>
-          log(s"Creating HTTPS listener on $host:$port with cert $cert and key $key")
-          val s = keg.transport.Platform.makeSslSocket(key, cert)
+        case Listener.Https(host, port, key, cert, clientCa) =>
+          val s = keg.transport.Platform.mkSslSocket(key, cert, clientCa)
           s.setReuseAddress(true)
           s.bind(new java.net.InetSocketAddress(host, port), 50)
           (listener, s)
 
     for (_, socket) <- serverSockets do
-      log(s"Listening on ${socket.getLocalSocketAddress}")
+      scribe.info(s"Listening on ${socket.getLocalSocketAddress}")
       workerPool.execute(() => acceptLoop(socket))
 
   def getListeners: Seq[Listener] =
-    serverSockets.map(_._1) // TODO: return actual socket addresses instead of configured listeners, to handle the case where port 0 was used
+    for (listener, socket) <- serverSockets yield
+      val actualPost = socket.getLocalPort()
+      listener match
+        case Listener.Http(host, _) => Listener.Http(host, actualPost)
+        case Listener.Https(host, _, key, cert, clientCa) => Listener.Https(host, actualPost, key, cert, clientCa)
 
   private def acceptLoop(serverSocket: java.net.ServerSocket): Unit =
     while true do
@@ -106,10 +107,11 @@ class UhttpTransport(
             // don't close the underlying stream, since we might want to read the next request on the same connection
             ()
 
+        val clientCert = keg.transport.Platform.extractClientCertificate(socket)
+
         val request = Request(
           method = head.method,
-          path = head.uri.split('?').headOption.getOrElse(""),
-          queryParams = keg.util.Util.decodeQueryString(head.uri.split('?').drop(1).headOption.getOrElse("")),
+          target = head.uri,
           headers = keg.util.MultiDict(head.headers),
           pathParams = Map.empty,
           remainingPathSegments = IndexedSeq.empty,
@@ -117,7 +119,8 @@ class UhttpTransport(
           session = Map.empty,
           flash = Map.empty,
           getBody = () => bodyStream,
-          remoteIp = socket.getInetAddress
+          remoteIp = socket.getInetAddress,
+          clientCertificate = clientCert
         )
         val response: Response[keg.model.Data] =
           try
@@ -140,11 +143,31 @@ class UhttpTransport(
         val reasonPhrase = UhttpTransport.StandardReasonPhrases.getOrElse(response.status, "Unknown")
         output.write(s"HTTP/1.1 ${response.status} $reasonPhrase\r\n".getBytes("UTF-8"))
 
+        // TODO: currently headers are streamed directly. This can lead to weird
+        // behavior if a header is encountered multiple times but the http spec
+        // only allows one. For example, if the user sets the `content-type`
+        // header in the response, which is also set in the response *data*, the
+        // header will be sent twice. In practice, most browsers will use the
+        // last occurrence, so if we send the response headers after the data
+        // headers, things *should* work out. This is not spec compliant
+        // however, and we should look into alternative solutions.
+        for (key, value) <- response.data.headers do
+          output.write(s"$key: $value\r\n".getBytes("UTF-8"))
         for (key, value) <- response.headers do
           output.write(s"$key: $value\r\n".getBytes("UTF-8"))
 
-        for (key, value) <- response.data.headers do
-          output.write(s"$key: $value\r\n".getBytes("UTF-8"))
+        for cookie <- response.cookies do
+          val sb = new StringBuilder(s"${cookie.name}=${cookie.value}")
+          if cookie.path != null then sb.append(s"; Path=${cookie.path}")
+          if cookie.domain != null then sb.append(s"; Domain=${cookie.domain}")
+          if cookie.maxAge != null then sb.append(s"; Max-Age=${cookie.maxAge}")
+          if cookie.expires != null then
+            val fmt = java.time.format.DateTimeFormatter.RFC_1123_DATE_TIME
+            sb.append(s"; Expires=${fmt.format(cookie.expires.atZone(java.time.ZoneOffset.UTC))}")
+          if cookie.httpOnly then sb.append("; HttpOnly")
+          if cookie.secure then sb.append("; Secure")
+          if cookie.sameSite != null then sb.append(s"; SameSite=${cookie.sameSite}")
+          output.write(s"Set-Cookie: $sb\r\n".getBytes("UTF-8"))
 
         if response.data.contentLength.isEmpty then
           // No content length provided, so we need to close the connection after sending the response
@@ -178,15 +201,6 @@ class UhttpTransport(
   def kill(): Unit =
     for (_, socket) <- serverSockets do socket.close()
     workerPool.shutdownNow()
-
-// @main
-// def main() =
-//   val server = HttpServer(Seq(Listener.Http("localhost", 8080)))
-//   server.start()
-//   Thread.sleep(10000)
-//   server.stop()
-//   server.awaitTermination()
-//   println("Server stopped")
 
 object UhttpTransport:
 
