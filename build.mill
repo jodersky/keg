@@ -86,6 +86,7 @@ object keg extends Module:
 
   object extras extends ScalaModule:
     def scalaVersion = scala3
+
     def moduleDeps = Seq(keg.jvm)
     def mvnDeps = Seq(
       thirdparty.ustats,
@@ -100,15 +101,15 @@ object sandbox extends ScalaModule:
 
   def mvnDeps = Seq(thirdparty.scalatags)
 
-// object bench extends ScalaModule with mill.contrib.jmh.JmhModule:
-//   def scalaVersion = scala3
-//   def jmhCoreVersion = "1.37"
-//   def moduleDeps = Seq(keg)
+object bench extends ScalaModule with mill.contrib.jmh.JmhModule:
+  def scalaVersion = scala3
+  def jmhCoreVersion = "1.37"
+  def moduleDeps = Seq(keg.jvm)
 
-//   def mvnDeps = super.mvnDeps() ++ Seq(
-//     thirdparty.upickle,
-//     thirdparty.requests
-//   )
+  def mvnDeps = super.mvnDeps() ++ Seq(
+    thirdparty.upickle,
+    thirdparty.requests
+  )
 
 // object examples extends Module:
 trait ExampleModule extends ScalaModule:
@@ -206,26 +207,6 @@ trait UsageExampleModule extends Module:
       if serverProcess != null then
         serverProcess.destroy()
         serverProcess.waitFor()
-
-  // object jvm extends ScalaModule:
-  //   def moduleDir = super.moduleDir / os.up
-  //   def scalaVersion = scala3
-  //   def moduleDeps = Seq(keg.jvm)
-
-  //   object test extends ScalaTests with KegTestModule:
-  //     def mvnDeps = super.mvnDeps() ++ Seq(thirdparty.oslib)
-  //     def forkEnv = Map("KEG_TEST_EXECUTABLE" -> jvm.assembly().path.toString)
-
-  // object native extends ScalaModule with ScalaNativeModule:
-  //   def moduleDir = super.moduleDir / os.up
-  //   def scalaVersion = scala3
-  //   def scalaNativeVersion = scalaNative
-  //   def moduleDeps = Seq(keg.native)
-  //   object test extends ScalaNativeTests with KegTestModule:
-  //     def mvnDeps = super.mvnDeps() ++ Seq(thirdparty.oslib)
-  //     def forkEnv = Map("KEG_TEST_EXECUTABLE" -> native.nativeLink().path.toString)
-
-
 
 /** A runnable scala file, whose content can also be rendered as
   * markdown.

@@ -12,7 +12,7 @@ class state:
     "\r\n" +
     "My Document\r\n" +
     "------WebKitFormBoundary7MA4YWxkTrZu0gW\r\n" +
-    "Content-Disposition: form-data; name=\"file\"; filename=\"doc.pdf\"\r\n" +
+    "Content-Disposition: form-data; name=\"file\"\r\n" +
     "Content-Type: application/pdf\r\n" +
     "\r\n" +
     "PDF binary content here\r\n" +
@@ -32,20 +32,18 @@ class TestCounter:
   @Benchmark
   def parse(state: state): Unit =
     state.inputStream.reset()
+    val visitor = keg.forms.FormDataVisitor()
     keg.forms.FormParser.parseMultipart(
       state.inputStream,
       state.boundary,
-      keg.forms.FormParser.FileDest.Null,
-      maxSize = 1024 * 1024,
-      maxMetaSize = 512,
-      maxFieldSize = 10 * 1024,
-      maxFileSize = 10 * 1024 * 1024
+      visitor,
     )
 
   @Benchmark
   def parseUrlencoded(state: state): Unit =
     state.urlencodedInputStream.reset()
+    val visitor = keg.forms.FormDataVisitor()
     keg.forms.FormParser.parseUrlEncoded(
       state.urlencodedInputStream,
-      maxSize = 1024 * 1024
+      visitor
     )
