@@ -153,44 +153,154 @@
 
 
 
-@keg.get("/echo/:n")
-def foo(n: Int, x: String) =
-  // println(s"Received n: $n, x: $x")
-  s"Echo: n=$n, x=$x"
+// @keg.get("/echo/:n")
+// def foo(n: Int, x: String) =
+//   // println(s"Received n: $n, x: $x")
+//   s"Echo: n=$n, x=$x"
 
-@keg.get("/")
-def index() = "hello, world"
+// @keg.get("/")
+// def index() = "hello, world"
 
-val plain = keg.Endpoint(
-  selector = keg.EndpointSelector.Simple("/foo", Seq("GET")),
-  invoke = (req: keg.model.Request) => keg.EndpointResult.Success(
-    keg.Response(
-      "ok"
-    )
-  )
-)
+// val plain = keg.Endpoint(
+//   selector = keg.EndpointSelector.Simple("/foo", Seq("GET")),
+//   invoke = (req: keg.model.Request) => keg.EndpointResult.Success(
+//     keg.Response(
+//       "ok"
+//     )
+//   )
+// )
 
-val routes: keg.model.Routes = keg.routes()
+// val routes: keg.model.Routes = keg.routes()
 
-@main()
-def main() =
-  // val key = java.nio.file.Files.readString(java.nio.file.Paths.get("key.pem"))
-  // val cert = java.nio.file.Files.readString(java.nio.file.Paths.get("cert.pem"))
+// @main()
+// def main() =
+//   // val key = java.nio.file.Files.readString(java.nio.file.Paths.get("key.pem"))
+//   // val cert = java.nio.file.Files.readString(java.nio.file.Paths.get("cert.pem"))
 
-  val server = keg.Server(
-    routes.endpoints ++ Seq(plain),
-    // debugMode = true,
-    interceptors = Seq(
-      // keg.main.RateLimiter(),
-      keg.extras.TimingInterceptor()
-    ),
-    listeners = Seq(
-      keg.Listener.Http("::1", 8000),
-      keg.Listener.Http("::1", 8081),
-      // keg.Listener.Https("::1", 8443, key, cert)
-    ),
-    // transportBuilder = new keg.transport.uhttp.UhttpTransportBuilder
-  )
+//   val server = keg.Server(
+//     routes.endpoints ++ Seq(plain),
+//     // debugMode = true,
+//     interceptors = Seq(
+//       // keg.main.RateLimiter(),
+//       keg.extras.TimingInterceptor()
+//     ),
+//     listeners = Seq(
+//       keg.Listener.Http("::1", 8000),
+//       keg.Listener.Http("::1", 8081),
+//       // keg.Listener.Https("::1", 8443, key, cert)
+//     ),
+//     // transportBuilder = new keg.transport.uhttp.UhttpTransportBuilder
+//   )
 
 
-  server.start()
+//   server.start()
+
+object foo:
+  case class Res(data: Conversion.into[Data])
+
+  case class Data()
+  object Data:
+    given stringAsData: Conversion[String, Data] with
+      def apply(a: String): Data = Data()
+
+    given asGenyAsData[A](using c: A => geny.Writable): Conversion[A, Data] with
+      def apply(a: A): Data = stringAsData(c(a).toString)
+
+
+  def direct: Res = Res(Data()) // obvious
+  def converted: Res = Res("hello") // uses stringAsData
+  def viaGenyDirect: Res = Res(ujson.Obj("hello" -> "world"): geny.Writable) // uses asGenyAsData
+  def viaGeny: Res = Res(ujson.Obj("hello" -> "world"))
+
+  case class CustomObject(value: String)
+
+  // here is the asymmetry: if we have a ToResponse[CustomObject], we can return
+  // CustomObject directly, but *can't* return a Res(CustomObject), since it is not Data
+
+  def custom: CustomObject = CustomObject("test")
+  // def fail: Res = Res(CustomObject("test")) // error: no Conversion[CustomObject, Data]
+
+  // def foo: Res =
+  // def foo: Res | String =
+  // def foo: String =
+
+object foo2:
+  case class Res[A](data: Conversion.into[A])
+  object Res:
+    type Raw = Res[Data]
+
+  case class Data()
+  object Data:
+    given stringAsData: Conversion[String, Data] with
+      def apply(a: String): Data = Data()
+
+    given asGenyAsData[A](using c: A => geny.Writable): Conversion[A, Data] with
+      def apply(a: A): Data = stringAsData(c(a).toString)
+
+
+  def direct: Res.Raw = Res(Data()) // obvious
+  def converted: Res.Raw = Res("hello") // uses stringAsData
+  def viaGenyDirect: Res.Raw = Res(ujson.Obj("hello" -> "world"): geny.Writable) // uses asGenyAsData
+  def viaGeny: Res.Raw = Res(ujson.Obj("hello" -> "world"))
+
+  case class CustomObject(value: String)
+
+  // here is the asymmetry: if we have a ToResponse[CustomObject], we can return
+  // CustomObject directly, but *can't* return a Res(CustomObject), since it is not Data
+
+  def custom: CustomObject = CustomObject("test")
+  def fail: Res[CustomObject] = Res(CustomObject("test")) // error: no Conversion[CustomObject, Data]
+
+  // to final essentially acts as a conversion to Res.Raw, but can live outside of
+  // the Res hierarchy
+  trait ToFinal[A]:
+    def convert(a: A): Res.Raw
+
+  object ToFinal:
+    given [A](using f: Conversion[A, Data]): ToFinal[A] with
+      def convert(a: A): Res.Raw = Res(f(a))
+
+    given [A](using f: ToFinal[A]): ToFinal[Res[A]] with
+      def convert(a: Res[A]): Res.Raw =
+        Res(f.convert(a.data).data)
+
+    given [A](using f: ToFinal[Res[A]], g: ToFinal[A]): ToFinal[Res[A] | A] with
+      def convert(a: Res[A] | A): Res.Raw =
+        a match
+          case r: Res[A] =>
+            println(s"Converting Res[A]: $r")
+            f.convert(r)
+          case v: A =>
+            println(s"Converting A: $v")
+            g.convert(v)
+
+    given customObjectToFinal: ToFinal[CustomObject] with
+      // def apply(a: CustomObject): Final = Final(a.value)
+      def convert(a: CustomObject): Res[Data] = Res(a.value)
+
+  summon[ToFinal[CustomObject]]
+  summon[ToFinal[String]]
+  summon[ToFinal[geny.Writable]]
+  summon[ToFinal[ujson.Value]]
+
+  summon[ToFinal[Res[CustomObject]]]
+  summon[ToFinal[Res[String]]]
+  summon[ToFinal[Res[geny.Writable]]]
+  summon[ToFinal[Res[ujson.Value]]]
+
+  def yeah: String | Res[String] = if false then "" else Res("")
+
+  // this still fails, but is probably acceptable
+  // def meh: Res[String] = if false then "" else Res("")
+
+  // def yeah2: geny.Writable| String | Res[String] = if false then "" else Res("")
+
+  summon[ToFinal[Res[String] | String]]
+  summon[ToFinal[String | Res[String]]]
+
+  @main
+  def main() =
+    val r1 = summon[ToFinal[Res[String] | String]].convert("hello")
+    val r2 = summon[ToFinal[Res[String] | String]].convert(Res("hello"))
+    println(r1)
+    println(r2)

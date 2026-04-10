@@ -96,7 +96,7 @@ object sandbox extends ScalaModule:
   def scalaVersion = scala3
   def moduleDeps = Seq(keg.jvm, keg.extras)
 
-  def scalacOptions = Seq("-Xprint:postInlining", "-feature")
+  def scalacOptions = Seq("-Xprint:postInlining", "-feature", "-preview")
 
   def mvnDeps = Seq(thirdparty.scalatags)
 
