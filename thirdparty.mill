@@ -14,7 +14,6 @@ object thirdparty:
   val scalatags = mvn"com.lihaoyi::scalatags::0.13.1"
   val scribe = mvn"com.outr::scribe::3.19.0"
   val scribeSlf4j = mvn"com.outr::scribe-slf4j2:3.19.0" // for examples
-  // val slf4jSimple = mvn"org.slf4j:slf4j-simple:2.0.9"
   val undertow = mvn"io.undertow:undertow-core:2.3.20.Final"
   val upickle = mvn"com.lihaoyi::upickle::4.4.1"
   val ustats = mvn"io.crashbox::ustats:0.7.0"
