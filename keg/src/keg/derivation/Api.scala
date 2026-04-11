@@ -290,20 +290,20 @@ trait StandardFroms extends BaseApi:
   given dataToResponse: ToResponse[Data] with
     def toResponse(data: Data, ctx: Context): RawResponse = Response(data)
 
-  given dataToDataToResponse[A](using c: Conversion[A, Data]): ToResponse[A] with
+  given dataableToResponse[A](using c: Conversion[A, Data]): ToResponse[A] with
     def toResponse(data: A, ctx: Context): RawResponse = Response(c(data))
 
-  given dataResponseToResponse[A](using c: Conversion[A, Data]): ToResponse[Response[A]] with
-    def toResponse(response: Response[A], ctx: Context): RawResponse =
-      response.copy(data = c(response.data))
-
-  given responseToResponse: ToResponse[RawResponse] with
-    def toResponse(response: RawResponse, ctx: Context): FinalResponse = response
+  // if we can return an A, we should be able to return a Response[A]
+  given returnable[A](using f: ToResponse[A]): ToResponse[Response[A]] with
+    def toResponse(response: Response[A], ctx: Context) =
+      f.toResponse(response.data, ctx) match
+        case r: Response[Data] => response.copy(data = r.data)
+        case other => other
 
   given wsToResponse: ToResponse[WsResponse] with
     def toResponse(ws: WsResponse, ctx: Context) = ws
 
-  given anyResponseToResponse: ToResponse[keg.model.FinalResponse] with
+  given finalResponseToResponse: ToResponse[keg.model.FinalResponse] with
     def toResponse(response: keg.model.FinalResponse, ctx: Context): FinalResponse = response
 
 trait ExtraFroms extends StandardFroms:
@@ -344,7 +344,10 @@ trait ExtraFroms extends StandardFroms:
         case e: Exception =>
           Result.Abort(400, s"Error reading request body: ${e.getMessage}")
 
-  given jsonToResponse[A](using upickle.default.CaseClassWriter[A]): ToResponse[A] with
+  given jsonableToResponse[A](
+    using upickle.default.Writer[A],
+    A <:< Product // we require A to be a Product (i.e., case class or tuple) to avoid accidentally picking this instance for types that have a Writer but aren't meant to be serialized as JSON objects
+  ): ToResponse[A] with
     def toResponse(value: A, ctx: Context): RawResponse =
       val jsonData = new Data:
         override def write(output: java.io.OutputStream): Unit =
@@ -358,7 +361,7 @@ trait ExtraFroms extends StandardFroms:
 
       Response(jsonData)
 
-trait Api extends ExtraFroms:
+trait Api extends StandardFroms with ExtraFroms:
   type Context = Unit
   def parseContext(request: Request): Context = ()
 

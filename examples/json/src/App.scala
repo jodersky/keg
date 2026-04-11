@@ -30,9 +30,7 @@ case class Item(name: String, count: Int) derives upickle.default.ReadWriter
 
 @keg.post("/double")
 def double(item: Item) =
-  val doubled = item.copy(count = item.count * 2)
-  upickle.default.write(doubled) // TODO: fix the ToResponse conversion issues so this works
-
+  item.copy(count = item.count * 2)
 //snippet:end
 /* usage snippet
 $ curl http://localhost:8080/double -d '{"name":"apples","count":5}'

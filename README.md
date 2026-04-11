@@ -426,7 +426,7 @@ def json() =
 ```
 $ curl "http://localhost:8080/json" -i
 ...
-Content-Type: application/json
+Content-Type: application/json; charset=UTF-8
 ...
 {"name":"alice","age":42}
 ```
@@ -453,8 +453,8 @@ header:
 
 ```scala
 // override content type
-@keg.get("/binaryJson")
-def binaryJson() =
+@keg.get("/custom")
+def custom() =
   keg.Response(
     ujson.Obj("name" -> "alice", "age" -> 42),
     status = 299,
@@ -463,7 +463,7 @@ def binaryJson() =
 ```
 
 ```
-$ curl "http://localhost:8080/binaryJson" -i
+$ curl "http://localhost:8080/custom" -i
 HTTP/1.1 299 Unknown
 ...
 X-Custom-Header: Hello
@@ -1424,9 +1424,7 @@ case class Item(name: String, count: Int) derives upickle.default.ReadWriter
 
 @keg.post("/double")
 def double(item: Item) =
-  val doubled = item.copy(count = item.count * 2)
-  upickle.default.write(doubled) // TODO: fix the ToResponse conversion issues so this works
-
+  item.copy(count = item.count * 2)
 ```
 
 ```

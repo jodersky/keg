@@ -26,7 +26,7 @@ def json() =
 /* usage snippet
 $ curl "http://localhost:8080/json" -i
 ...
-Content-Type: application/json
+Content-Type: application/json; charset=UTF-8
 ...
 {"name":"alice","age":42}
 */
@@ -50,8 +50,8 @@ Content-Type: application/octet-stream
 
 //snippet:start
 // override content type
-@keg.get("/binaryJson")
-def binaryJson() =
+@keg.get("/custom")
+def custom() =
   keg.Response(
     ujson.Obj("name" -> "alice", "age" -> 42),
     status = 299,
@@ -59,7 +59,7 @@ def binaryJson() =
   )
 //snippet:end
 /* usage snippet
-$ curl "http://localhost:8080/binaryJson" -i
+$ curl "http://localhost:8080/custom" -i
 HTTP/1.1 299 Unknown
 ...
 X-Custom-Header: Hello

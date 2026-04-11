@@ -105,32 +105,5 @@ object Data:
 
       def contentLength: Option[Long] = a.contentLength
 
-  given foo[A](using c: A => geny.Writable): Conversion[A, Data] with
+  given genyableAsData[A](using c: A => geny.Writable): Conversion[A, Data] with
     def apply(a: A): Data = genyAsData(c(a))
-
-  // Geny uses Scala 2, so we provide an implicit class for conversions
-  implicit class GenyAsDataCompat[A](a: A)(implicit f: A => geny.Writable)
-      extends Data:
-    val writable = f(a)
-    override def write(out: java.io.OutputStream): Unit =
-      writable.writeBytesTo(out)
-
-    override def headers: Seq[(String, String)] =
-      writable.httpContentType.map(ct => "Content-Type" -> ct).toSeq
-
-    def contentLength: Option[Long] = writable.contentLength
-
-object Response:
-
-  // given dataAsResponse[A](using f: Conversion[A, Data]): Conversion[A, Response[Data]] with
-  //   def apply(a: A): Response[Data] =
-  //     Response(
-  //       data = f(a),
-  //       status = 200,
-  //       headers = Seq.empty
-  //     )
-
-  import scala.language.implicitConversions
-
-  implicit def compat[A](a: Response[A])(implicit f: A => Data): RawResponse =
-    a.copy(data = f(a.data))
