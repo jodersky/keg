@@ -57,6 +57,7 @@ changes and their rationales.
 - [Transports](#transports)
 - [Forms](#forms)
 - [JSON](#json)
+- [Debug mode and live reload](#debug-mode-and-live-reload)
 
 ### Basics
 
@@ -164,6 +165,28 @@ You can also implement your own transport if you like. Take a look at the
 ### JSON
 
 [include:json]
+
+### Debug mode and live reload
+
+Keg has a built-in debug mode that activates extra developer tooling. It is
+enabled automatically when either the `KEG_DEBUG` or `DEBUG` environment
+variable is set, or by passing `debugMode = true` to `keg.Server`:
+
+```scala
+val server = keg.Server(keg.routes(), debugMode = true)
+```
+
+In debug mode, keg changes the following behaviour:
+
+- Error responses include the exception message rather than a generic body.
+- Custom recovery handlers are ignored so that raw error details are always
+  surfaced.
+- A persistent session secret is used across restarts, so session and flash
+  cookies remain valid while developing.
+- A live-reload script is injected into every HTML response. It connects back
+  to the server and automatically reloads the page when the server restarts or
+  when `keg.Reloader.reload()` is called — useful when wiring up a file-watcher
+  or build-tool integration.
 
 ## Internals
 
