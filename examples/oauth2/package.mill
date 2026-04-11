@@ -23,7 +23,8 @@ object `package` extends build.ExampleModule:
   )
 
   def forkEnv = super.forkEnv() ++ Map(
-    "DEBUG" -> "true"
+    "DEBUG" -> "true",
+    "DB" -> (Task.ctx().workspace  / ".data" / "sso.db").toString
   )
 
   def image() = Task.Command {
