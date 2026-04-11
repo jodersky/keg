@@ -35,7 +35,7 @@ def jsonAny(data: ujson.Value) =
   data
 //snippet:end
 
-val server: keg.Server = keg.Server(keg.routes().endpoints)
+val server: keg.Server = keg.Server(keg.routes())
 
 @main
 def main() =

@@ -3,7 +3,8 @@ package keg.derivation
 import keg.model.Request
 import keg.model.Response
 import keg.model.WsResponse
-import keg.model.WebResponse
+import keg.model.FinalResponse
+import keg.model.RawResponse
 import keg.model.Data
 import java.io.InputStream
 
@@ -21,7 +22,7 @@ import java.io.InputStream
 // def foo(ex: Exception) = ???
 
 // enum EpRes:
-//   case Success(response: WebResponse)
+//   case Success(response: FinalResponse)
 
 //   // invoking the endpoint produced an exception, which should be handled
 //   case Exception(ex: Throwable)
@@ -34,22 +35,22 @@ import java.io.InputStream
 
 // enum Ep:
 //   /** An endpoint representing a simple HTTP route, selected by its path and methods. */
-//   case Simple(path: String, methods: Seq[String], invoke: (Request) => WebResponse)
+//   case Simple(path: String, methods: Seq[String], invoke: (Request) => FinalResponse)
 
 //   /** An endpoint representing an upgrade to a WebSocket connection. */
-//   case Websocket(path: String, invoke: (Request) => WebResponse)
+//   case Websocket(path: String, invoke: (Request) => FinalResponse)
 
 //   /** An endpoint representing an error handler for a specific HTTP status code. */
-//   case Aborted(invoke: (Request, Int, String) => WebResponse)
+//   case Aborted(invoke: (Request, Int, String) => FinalResponse)
 
 //   /** Endpoint called if no other endpoint matches the request. */
-//   case NotFound(invoke: Request => WebResponse)
+//   case NotFound(invoke: Request => FinalResponse)
 
 //   /** Endpoint called if the request method is not allowed. */
-//   case MethodNotAllowed(invoke: Request => WebResponse)
+//   case MethodNotAllowed(invoke: Request => FinalResponse)
 
 //   /** Endpoint called if an error occurs while processing the request. */
-//   case Error(handler: (Request, Exception) => WebResponse)
+//   case Error(handler: (Request, Exception) => FinalResponse)
 
 /** */
 enum Result[+A]:
@@ -61,7 +62,7 @@ enum Result[+A]:
   case Abort(code: Int, message: String)
 
   /** Respond immediately with the given response. */
-  case Respond(response: WebResponse)
+  case Respond(response: FinalResponse)
 
   def map[B](f: A => B): Result[B] = this match
     case Continue(value) => Continue(f(value))
@@ -133,7 +134,7 @@ trait BaseApi:
 
   /** Type class for converting values to a response. */
   trait ToResponse[-A]:
-    def toResponse(value: A, ctx: Context): keg.model.WebResponse
+    def toResponse(value: A, ctx: Context): keg.model.FinalResponse
 
   trait EndpointAnnotation extends scala.annotation.StaticAnnotation
 
@@ -287,23 +288,23 @@ trait StandardFroms extends BaseApi:
       catch case _: Exception => Result.Abort(400, "Invalid request body")
 
   given dataToResponse: ToResponse[Data] with
-    def toResponse(data: Data, ctx: Context): Response[Data] = Response(data)
+    def toResponse(data: Data, ctx: Context): RawResponse = Response(data)
 
   given dataToDataToResponse[A](using c: Conversion[A, Data]): ToResponse[A] with
-    def toResponse(data: A, ctx: Context): Response[Data] = Response(c(data))
+    def toResponse(data: A, ctx: Context): RawResponse = Response(c(data))
 
   given dataResponseToResponse[A](using c: Conversion[A, Data]): ToResponse[Response[A]] with
-    def toResponse(response: Response[A], ctx: Context): Response[Data] =
+    def toResponse(response: Response[A], ctx: Context): RawResponse =
       response.copy(data = c(response.data))
 
-  given responseToResponse: ToResponse[Response[Data]] with
-    def toResponse(response: Response[Data], ctx: Context): WebResponse = response
+  given responseToResponse: ToResponse[RawResponse] with
+    def toResponse(response: RawResponse, ctx: Context): FinalResponse = response
 
   given wsToResponse: ToResponse[WsResponse] with
     def toResponse(ws: WsResponse, ctx: Context) = ws
 
-  given anyResponseToResponse: ToResponse[keg.model.WebResponse] with
-    def toResponse(response: keg.model.WebResponse, ctx: Context): WebResponse = response
+  given anyResponseToResponse: ToResponse[keg.model.FinalResponse] with
+    def toResponse(response: keg.model.FinalResponse, ctx: Context): FinalResponse = response
 
 trait ExtraFroms extends StandardFroms:
 
@@ -344,7 +345,7 @@ trait ExtraFroms extends StandardFroms:
           Result.Abort(400, s"Error reading request body: ${e.getMessage}")
 
   given jsonToResponse[A](using upickle.default.CaseClassWriter[A]): ToResponse[A] with
-    def toResponse(value: A, ctx: Context): Response[Data] =
+    def toResponse(value: A, ctx: Context): RawResponse =
       val jsonData = new Data:
         override def write(output: java.io.OutputStream): Unit =
           upickle.default.stream(value).writeBytesTo(output)
@@ -413,7 +414,7 @@ trait Api extends ExtraFroms:
 //       Result.Respond(Response(403, data = "Forbidden"))
 
 // class get(path: String, authz: (String, String)) extends EndpointAnnotation:
-//   def wrap(req: Request, next: (Context, Request) => keg.model.WebResponse): keg.model.WebResponse =
+//   def wrap(req: Request, next: (Context, Request) => keg.model.FinalResponse): keg.model.FinalResponse =
 //     val user = authenticate(req) // get user from request (e.g., from a token)
 //     val authzInfo = authorize(req, authz, user)
 

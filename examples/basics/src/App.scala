@@ -15,10 +15,10 @@ def echo(req: keg.Request) =
 
 // use the keg.routes() macro to collect all annotated methods into a set of
 // routes
-val routes: keg.model.Routes = keg.routes()
+val routes: Seq[keg.Route] = keg.routes()
 
 // finally, create a server from the routes
-val server: keg.Server = keg.Server(routes.endpoints)
+val server: keg.Server = keg.Server(routes)
 
 @main
 def main() =
@@ -50,7 +50,7 @@ val certPath = java.nio.file.Paths.get("nonexistent.crt")
 //the `listeners` parameter when creating the server.
 //snippet:start
 val serverWithConfig = keg.Server(
-  routes.endpoints,
+  routes,
   listeners = Seq(
     keg.Listener.Http("::", 8081),
     keg.Listener.Http("::1", 8082), // you can even listen on multiple ports!

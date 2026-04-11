@@ -48,14 +48,14 @@ def authorizationCodeFlow(
     selector = keg.model.EndpointSelector.Simple(callback, Seq("GET")),
     invoke = req =>
       try
-        if req.queryParams.contains("error") then
-          val error = req.queryParams.get("error").getOrElse("unknown_error")
-          val description = req.queryParams.get("error_description")
+        if req.params.contains("error") then
+          val error = req.params.get("error").getOrElse("unknown_error")
+          val description = req.params.get("error_description")
           result.set(AuthorizationCodeFlowResult.Error(error, description))
           failure
         else
-          val code = req.queryParams.get("code").getOrElse("")
-          val returnedState = req.queryParams.get("state").getOrElse("")
+          val code = req.params.get("code").getOrElse("")
+          val returnedState = req.params.get("state").getOrElse("")
           if returnedState != state then
             result.set(AuthorizationCodeFlowResult.Error("invalid_state", Some(s"Expected state '$state' but got '$returnedState'")))
             failure

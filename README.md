@@ -12,7 +12,7 @@ A small web framework, merging ideas from
 def hello(n: Int, req: keg.Request) =
   s"hello ${req.text()}\n" * n
 
-val server = keg.Server(keg.routes().endpoints)
+val server = keg.Server(keg.routes())
 
 @main
 def main() =
@@ -100,10 +100,10 @@ def echo(req: keg.Request) =
 
 // use the keg.routes() macro to collect all annotated methods into a set of
 // routes
-val routes: keg.model.Routes = keg.routes()
+val routes: Seq[keg.Route] = keg.routes()
 
 // finally, create a server from the routes
-val server: keg.Server = keg.Server(routes.endpoints)
+val server: keg.Server = keg.Server(routes)
 
 @main
 def main() =
@@ -135,7 +135,7 @@ he `listeners` parameter when creating the server.
 
 ```scala
 val serverWithConfig = keg.Server(
-  routes.endpoints,
+  routes,
   listeners = Seq(
     keg.Listener.Http("::", 8081),
     keg.Listener.Http("::1", 8082), // you can even listen on multiple ports!
@@ -600,8 +600,8 @@ object app extends keg.derivation.Api:
   // Defined here rather than in Pagination's companion object, which we don't control
   given FromRequest[Pagination] with
     def fromRequest(req: keg.Request, ctx: Context): keg.derivation.Result[Pagination] =
-      val page = req.queryParams.get("page").flatMap(_.toIntOption).getOrElse(1)
-      val pageSize = req.queryParams.get("pageSize").flatMap(_.toIntOption).getOrElse(10)
+      val page = req.params.get("page").flatMap(_.toIntOption).getOrElse(1)
+      val pageSize = req.params.get("pageSize").flatMap(_.toIntOption).getOrElse(10)
       keg.derivation.Result.Continue(Pagination(page, pageSize))
 
 // Use @app.post, not @keg.post, so the macro resolves FromRequest inside `app`
@@ -613,8 +613,12 @@ val routes = keg.routes()
 
 @main
 def main() =
-  val server = keg.Server(routes.endpoints)
+  val server = keg.Server(routes)
   server.start()
+
+  sys.addShutdownHook:
+    server.stop()
+    server.awaitTermination()
 ```
 
 ```
@@ -653,7 +657,7 @@ object app extends keg.derivation.Api:
 
   given FromRequest[User] with
     def fromRequest(req: keg.Request, ctx: Context): keg.derivation.Result[User] =
-      userDb.get(req.queryParams.get("username").getOrElse("")) match
+      userDb.get(req.params.get("username").getOrElse("")) match
         case Some(user) => keg.derivation.Result.Continue(user)
         case None       => keg.derivation.Result.Respond(keg.Response("Unauthorized\n", 401))
 
@@ -665,7 +669,7 @@ val routes = keg.routes()
 
 @main
 def main() =
-  val server = keg.Server(routes.endpoints)
+  val server = keg.Server(routes)
   server.start()
 ```
 
@@ -692,7 +696,7 @@ class UserService:
 class App(userService: UserService) extends keg.derivation.Api:
   given FromRequest[User] with
     def fromRequest(req: keg.Request, ctx: Context): keg.derivation.Result[User] =
-      userService.userDb.get(req.queryParams.get("username").getOrElse("")) match
+      userService.userDb.get(req.params.get("username").getOrElse("")) match
         case Some(user) => keg.derivation.Result.Continue(user)
         case None       => keg.derivation.Result.Respond(keg.Response("Unauthorized\n", 401))
 
@@ -708,7 +712,7 @@ def main2() =
   val userService = UserService()
   val app = App(userService)
   val routes = Routes(app).routes
-  val server = keg.Server(routes.endpoints)
+  val server = keg.Server(routes)
   server.start()
 ```
 
@@ -778,25 +782,54 @@ The `keg.EndpointResult.Failure` has three subtypes:
   the request
 
 ```scala
-// @keg.error()
+@keg.error()
 def errorHandler(
   req: keg.Request,
   ep: keg.Endpoint,
   failure: keg.EndpointResult.Failure
-) =
+): keg.Response[keg.Data] =
+  failure match
+    case keg.EndpointResult.Failure.ParamAbort(param, code, message) =>
+      keg.Response(
+        s"something went wrong when reading parameter ${param}: ${message}\n",
+        code
+      )
+    case keg.EndpointResult.Failure.MethodAbort(code, message) =>
+      keg.Response(
+        s"the endpoint ${ep.selector} rejected the request: ${message}\n",
+        code
+      )
+    case keg.EndpointResult.Failure.Exception(ex) =>
+      keg.Response(
+        s"an exception was thrown while processing the request: ${ex.getMessage}\n",
+        500
+      )
 
-  keg.Response(
-    s"custom error handler: ${failure}\n",
-    500
-  )
+@keg.get("/fail")
+def fail(): keg.Response[keg.Data] =
+  throw new RuntimeException("something went wrong")
 
-val routes = keg.routes()
-
-@main
-def main() =
-  val server = keg.Server(routes.endpoints)
-  server.start()
+@keg.get("/reject")
+def reject(): keg.Response[keg.Data] =
+  keg.abort(400, "request rejected by endpoint")
 ```
+
+```
+$ curl "http://localhost:8080/fail" -i
+HTTP/1.1 500 Internal Server Error
+...
+an exception was thrown while processing the request: something went wrong
+```
+
+```
+$ curl "http://localhost:8080/reject" -i
+HTTP/1.1 400 Bad Request
+...
+the endpoint Simple(/reject,List(GET)) rejected the request: request rejected by endpoint
+```
+
+
+
 
 
 ### Websockets
@@ -807,7 +840,7 @@ Websocket support is more-or-less copied directly from cask.
 
 ```scala
 @keg.websocket("/hello/:x")
-def hello(x: String): keg.WebResponse =
+def hello(x: String): keg.FinalResponse =
   if x != "secret" then
     // you can also return a normal HTTP response in a websocket handler if you
     // want to
@@ -981,7 +1014,7 @@ def hello() =
   "hello world\n"
 
 val server = keg.Server(
-  keg.routes().endpoints,
+  keg.routes(),
   listeners = Seq(
     keg.Listener.Https(
       host = "::",
@@ -1003,7 +1036,7 @@ clientCa` parameter:
 
 ```scala
 val serverWithClientAuth = keg.Server(
-  keg.routes().endpoints,
+  keg.routes(),
   listeners = Seq(
     keg.Listener.Https(
       host = "::",
@@ -1064,7 +1097,7 @@ val endpoints = Seq(
   keg.Endpoint(
     selector = keg.EndpointSelector.Simple("/echo", Seq("POST")),
     invoke = req =>
-      val body = new String(req.body.readAllBytes(), "UTF-8")
+      val body = new String(req.body().readAllBytes(), "UTF-8")
       keg.model.EndpointResult.Success(
         keg.Response(s"Echo: $body", 200)
       )
@@ -1119,8 +1152,8 @@ object LoggingInterceptor extends keg.Interceptor:
   def intercept(
     request: keg.Request,
     endpoint: keg.Endpoint,
-    next: keg.Request => keg.WebResponse
-  ): keg.WebResponse =
+    next: keg.Request => keg.FinalResponse
+  ): keg.FinalResponse =
     println(s"--> ${request.method} ${request.path}")
     val response = next(request)
     response match
@@ -1145,8 +1178,8 @@ object GzipInterceptor extends keg.Interceptor:
   def intercept(
     request: keg.Request,
     endpoint: keg.Endpoint,
-    next: keg.Request => keg.WebResponse
-  ): keg.WebResponse =
+    next: keg.Request => keg.FinalResponse
+  ): keg.FinalResponse =
     // Decompress request body if Content-Encoding: gzip
     val req =
       if request.headers.get("content-encoding").exists(_.equalsIgnoreCase("gzip")) then
@@ -1194,8 +1227,8 @@ case class ApiKeyInterceptor(validKey: String) extends keg.Interceptor:
   def intercept(
     request: keg.Request,
     endpoint: keg.Endpoint,
-    next: keg.Request => keg.WebResponse
-  ): keg.WebResponse =
+    next: keg.Request => keg.FinalResponse
+  ): keg.FinalResponse =
     request.headers.get("x-api-key") match
       case Some(key) if key == validKey =>
         next(request)
@@ -1219,7 +1252,7 @@ val routes = keg.routes()
 @main
 def main() =
   val server = keg.Server(
-    routes.endpoints,
+    routes,
     interceptors = Seq(
       LoggingInterceptor,
       GzipInterceptor,
@@ -1446,3 +1479,46 @@ graph LR
 Derivation and model layers are to be considered as library layers, no logging
 or side-effecting is allowed; those are reserved for main and transport.
 
+
+#### Response types
+
+```mermaid
+graph BT
+  simple["Response[A]"]
+  raw["Response[Data] == RawResponse"]
+  ws["WsResponse"]
+  web["FinalResponse"]
+
+  ws --> web
+  raw --> web
+  simple -.-> raw
+```
+
+- the HTTP layer understands two types of responses:
+  - "simple" HTTP response
+  - web sockets
+- these are abstracted by a type alias `FinalResponse`
+- at the end of the day, an endpoint must always return a `FinalResponse`
+
+- however, `Response` is made generic for ergonomics:
+  - in the derivation layer, we allow a user to return any type `T` from a
+    method, so long as there is a `ToResponse[T]` available
+  - we do this for two reasons:
+    - out of symmetry to `FromRequest[?]`
+    - to allow users to define common serialization logic in their config traits
+  - assuming that a method can return an arbitrary `T`, it would be strange and
+    counter-intuitive, if it couldn't return a `Response[T]`. Essentially, we're
+    saying that if serialization logic can be defined in the config trait, that
+    same logic should apply for the case where a user returns that type wrapped
+    in a response. Put another way, we saw that a response can be a specialized
+    return value.
+  - for the conversion to work, the routes() macro uses the fact that
+    `ToResponse`s are path-dependent
+  - however, in the annotated method themselves, there is no `ToResponse`
+    available (at least not without an import, which we want to avoid)
+  - hence, we allow the *construction* of generic `Response[A]`s, but require
+    that they be convertible via a `ToResponse` to a raw response
+  - it would be *possible* to create a duplicate hierarchy, where `RawResponse`
+    becomes an entirely different type (rather than a type alias) which is used
+    by the routing layer, and the generic response is confined to the derivation
+    layer

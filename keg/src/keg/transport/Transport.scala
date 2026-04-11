@@ -1,6 +1,6 @@
 package keg.transport
 
-import keg.model.{Request, Response, WebResponse}
+import keg.model.{Request, Response, FinalResponse}
 
 trait Transport:
 
@@ -49,4 +49,4 @@ object Transport:
     * - when serializing a Response: session, flash should not be used (they
     *   will have been converted to cookies by the application layer)
     */
-  type BuilderFunc = (Seq[Listener], Request => WebResponse) => Transport
+  type BuilderFunc = (Seq[Listener], Request => FinalResponse) => Transport

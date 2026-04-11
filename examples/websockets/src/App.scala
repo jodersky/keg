@@ -4,7 +4,7 @@ package app
 
 //snippet:start
 @keg.websocket("/hello/:x")
-def hello(x: String): keg.WebResponse =
+def hello(x: String): keg.FinalResponse =
   if x != "secret" then
     // you can also return a normal HTTP response in a websocket handler if you
     // want to
@@ -25,7 +25,7 @@ def hello(x: String): keg.WebResponse =
 // One thing which is different about keg however, is that not `actorContext` is
 // needed to create a `WsActor`. Keg does this by injecting a context with a
 // context function into `keg.WsResponse(ctx ?=> channel => actor)`.
-val server = keg.Server(keg.routes().endpoints)
+val server = keg.Server(keg.routes())
 
 @main
 def main() =

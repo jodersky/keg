@@ -10,7 +10,7 @@ def hello() =
   "hello world\n"
 
 val server = keg.Server(
-  keg.routes().endpoints,
+  keg.routes(),
   listeners = Seq(
     keg.Listener.Https(
       host = "::",
@@ -30,7 +30,7 @@ hello world
 //`clientCa` parameter:
 //snippet:start
 val serverWithClientAuth = keg.Server(
-  keg.routes().endpoints,
+  keg.routes(),
   listeners = Seq(
     keg.Listener.Https(
       host = "::",

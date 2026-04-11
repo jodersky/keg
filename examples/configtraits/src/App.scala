@@ -28,8 +28,8 @@ object app extends keg.derivation.Api:
   // Defined here rather than in Pagination's companion object, which we don't control
   given FromRequest[Pagination] with
     def fromRequest(req: keg.Request, ctx: Context): keg.derivation.Result[Pagination] =
-      val page = req.queryParams.get("page").flatMap(_.toIntOption).getOrElse(1)
-      val pageSize = req.queryParams.get("pageSize").flatMap(_.toIntOption).getOrElse(10)
+      val page = req.params.get("page").flatMap(_.toIntOption).getOrElse(1)
+      val pageSize = req.params.get("pageSize").flatMap(_.toIntOption).getOrElse(10)
       keg.derivation.Result.Continue(Pagination(page, pageSize))
 
 // Use @app.post, not @keg.post, so the macro resolves FromRequest inside `app`
@@ -41,8 +41,12 @@ val routes = keg.routes()
 
 @main
 def main() =
-  val server = keg.Server(routes.endpoints)
+  val server = keg.Server(routes)
   server.start()
+
+  sys.addShutdownHook:
+    server.stop()
+    server.awaitTermination()
 //snippet:end
 /* usage snippet
 $ curl "http://localhost:8080/profile?page=2&pageSize=5" -X POST

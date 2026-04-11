@@ -52,7 +52,7 @@ case class Request(
   val queryString: String =
     if qi == -1 then "" else target.substring(qi + 1)
 
-  val queryParams: MultiDict[String, String] =
+  val params: MultiDict[String, String] =
     if qi == -1 then MultiDict.empty
     else keg.util.Util.decodeQueryString(queryString)
 

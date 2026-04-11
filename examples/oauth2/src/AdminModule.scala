@@ -784,12 +784,12 @@ class AdminModule(
 
   @app.get("/admin/clients/:id/redirect-uris/item")
   def redirectUriItemView(canAdmin: CanAdmin, id: String, req: keg.Request) =
-    val uri = req.queryParams.getOrElse("uri", "")
+    val uri = req.params.getOrElse("uri", "")
     redirectUriItem(id, uri)
 
   @app.get("/admin/clients/:id/redirect-uris/edit")
   def redirectUriEditView(canAdmin: CanAdmin, id: String, req: keg.Request) =
-    val uri = req.queryParams.getOrElse("uri", "")
+    val uri = req.params.getOrElse("uri", "")
     redirectUriEditItem(id, uri)
 
   @app.post("/admin/clients/:id/redirect-uris/add")
@@ -809,7 +809,7 @@ class AdminModule(
 
   @app.patch("/admin/clients/:id/redirect-uris")
   def redirectUriUpdate(canAdmin: CanAdmin, id: String, req: keg.Request, form: keg.FormData) =
-    val old = req.queryParams.getOrElse("old", "")
+    val old = req.params.getOrElse("old", "")
     val uri = form.fields.getOrElse("uri", "").trim
     if uri.isEmpty then
       clientRepo.modify(id)(c => c.copy(redirectUris = c.redirectUris - old))
@@ -822,7 +822,7 @@ class AdminModule(
 
   @app.delete("/admin/clients/:id/redirect-uris")
   def redirectUriDelete(canAdmin: CanAdmin, id: String, req: keg.Request) =
-    val uri = req.queryParams.getOrElse("uri", "")
+    val uri = req.params.getOrElse("uri", "")
     clientRepo.modify(id)(c => c.copy(redirectUris = c.redirectUris - uri))
     h.raw("")
 

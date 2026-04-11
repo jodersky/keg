@@ -5,7 +5,7 @@ package app
 def hello(n: Int, req: keg.Request) =
   s"hello ${req.text()}\n" * n
 
-val server = keg.Server(keg.routes().endpoints)
+val server = keg.Server(keg.routes())
 
 @main
 def main() =

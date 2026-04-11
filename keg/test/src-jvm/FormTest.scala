@@ -2,7 +2,7 @@ import utest.*
 
 object FormTest extends TestSuite:
 
-  def withServer(endpoints: Seq[keg.Endpoint | keg.Recovery])(fn: String => Unit): Unit =
+  def withServer(endpoints: Seq[keg.Route])(fn: String => Unit): Unit =
     val server = keg.Server(
       endpoints = endpoints,
       listeners = Seq(keg.Listener.Http("::1", 0)),
@@ -25,7 +25,7 @@ object FormTest extends TestSuite:
 
         val routes = keg.routes()
 
-      withServer(app.routes.endpoints): url =>
+      withServer(app.routes): url =>
         val response = requests.post(
           url = s"$url/submit",
           data = Map("name" -> "Alice", "value" -> "42")
@@ -43,7 +43,7 @@ object FormTest extends TestSuite:
 
         val routes = keg.routes()
 
-      withServer(app.routes.endpoints): url =>
+      withServer(app.routes): url =>
         val response = requests.post(
           url = s"$url/submit",
           data = requests.MultiPart(
@@ -64,7 +64,7 @@ object FormTest extends TestSuite:
 
         val routes = keg.routes()
 
-      withServer(app.routes.endpoints): url =>
+      withServer(app.routes): url =>
         val response = requests.post(
           url = s"$url/submit",
           data = requests.MultiPart(
@@ -87,7 +87,7 @@ object FormTest extends TestSuite:
 
         val routes = keg.routes()
 
-      withServer(app.routes.endpoints): url =>
+      withServer(app.routes): url =>
         val response = requests.post(
           url = s"$url/submit",
           data = requests.MultiPart(

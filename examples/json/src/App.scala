@@ -50,4 +50,4 @@ val routes = keg.routes()
 
 @main
 def main() =
-  keg.Server(routes.endpoints).start()
+  keg.Server(routes).start()

@@ -26,7 +26,7 @@ object app extends keg.derivation.Api:
 
   given FromRequest[User] with
     def fromRequest(req: keg.Request, ctx: Context): keg.derivation.Result[User] =
-      userDb.get(req.queryParams.get("username").getOrElse("")) match
+      userDb.get(req.params.get("username").getOrElse("")) match
         case Some(user) => keg.derivation.Result.Continue(user)
         case None       => keg.derivation.Result.Respond(keg.Response("Unauthorized\n", 401))
 
@@ -38,7 +38,7 @@ val routes = keg.routes()
 
 @main
 def main() =
-  val server = keg.Server(routes.endpoints)
+  val server = keg.Server(routes)
   server.start()
 //snippet:end
 /* usage snippet
@@ -62,7 +62,7 @@ class UserService:
 class App(userService: UserService) extends keg.derivation.Api:
   given FromRequest[User] with
     def fromRequest(req: keg.Request, ctx: Context): keg.derivation.Result[User] =
-      userService.userDb.get(req.queryParams.get("username").getOrElse("")) match
+      userService.userDb.get(req.params.get("username").getOrElse("")) match
         case Some(user) => keg.derivation.Result.Continue(user)
         case None       => keg.derivation.Result.Respond(keg.Response("Unauthorized\n", 401))
 
@@ -78,6 +78,6 @@ def main2() =
   val userService = UserService()
   val app = App(userService)
   val routes = Routes(app).routes
-  val server = keg.Server(routes.endpoints)
+  val server = keg.Server(routes)
   server.start()
 //snippet:end

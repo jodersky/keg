@@ -1,5 +1,8 @@
 package keg.model
 
+/** Common sealed base for all route entries (endpoints and recovery handlers). */
+sealed trait Route
+
 /** An endpoint represents a function that is called in response to an HTTP
   * request.
   *
@@ -48,7 +51,7 @@ case class Endpoint(
   selector: EndpointSelector,
   invoke: Request => EndpointResult,
   meta: EndpointMeta
-)
+) extends Route
 
 object Endpoint:
 
@@ -85,7 +88,7 @@ object EndpointResult:
     * concerned, it is still a successful result since it was able to handle the
     * request and produce a response.
     */
-  case class Success(response: Response[Data] | WsResponse) extends EndpointResult
+  case class Success(response: FinalResponse) extends EndpointResult
 
   /** The endpoint invocation failed. Sub types represent different failure scenarios. */
   sealed trait Failure extends EndpointResult
@@ -149,29 +152,5 @@ object EndpointMeta:
   * failure result, and returns a response to be sent to the client.
   */
 case class Recovery(
-  invoke: (Request, Endpoint, EndpointResult.Failure) => Response[Data]
-)
-
-/** A route is grouping of endpoints and metadata such as the generated paths.
-  *
-  * It is intended to be instantiated by the `routes()` macro, which will refine
-  * the `paths` member to contain the actual path methods, which can then be
-  * used to generate URLs to the endpoints in a type-safe way.
-  */
-trait Routes:
-  def endpoints: Seq[Endpoint | Recovery]
-  def paths: Paths
-
-/** This will be refined by macros to contain the actual paths.
-  *
-  * E..g. for route
-  *
-  * ```
-  * @get("/users/:id")
-  * def getUser(id: String)
-  * ```
-  *
-  * it will contain a method `getUser(id: String): String` that generates the
-  * path `/users/{id}`.
-  */
-trait Paths
+  invoke: (Request, Endpoint, EndpointResult.Failure) => RawResponse
+) extends Route

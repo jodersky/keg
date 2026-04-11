@@ -23,8 +23,8 @@ object LoggingInterceptor extends keg.Interceptor:
   def intercept(
     request: keg.Request,
     endpoint: keg.Endpoint,
-    next: keg.Request => keg.WebResponse
-  ): keg.WebResponse =
+    next: keg.Request => keg.FinalResponse
+  ): keg.FinalResponse =
     println(s"--> ${request.method} ${request.path}")
     val response = next(request)
     response match
@@ -48,8 +48,8 @@ object GzipInterceptor extends keg.Interceptor:
   def intercept(
     request: keg.Request,
     endpoint: keg.Endpoint,
-    next: keg.Request => keg.WebResponse
-  ): keg.WebResponse =
+    next: keg.Request => keg.FinalResponse
+  ): keg.FinalResponse =
     // Decompress request body if Content-Encoding: gzip
     val req =
       if request.headers.get("content-encoding").exists(_.equalsIgnoreCase("gzip")) then
@@ -96,8 +96,8 @@ case class ApiKeyInterceptor(validKey: String) extends keg.Interceptor:
   def intercept(
     request: keg.Request,
     endpoint: keg.Endpoint,
-    next: keg.Request => keg.WebResponse
-  ): keg.WebResponse =
+    next: keg.Request => keg.FinalResponse
+  ): keg.FinalResponse =
     request.headers.get("x-api-key") match
       case Some(key) if key == validKey =>
         next(request)
@@ -120,7 +120,7 @@ val routes = keg.routes()
 @main
 def main() =
   val server = keg.Server(
-    routes.endpoints,
+    routes,
     interceptors = Seq(
       LoggingInterceptor,
       GzipInterceptor,

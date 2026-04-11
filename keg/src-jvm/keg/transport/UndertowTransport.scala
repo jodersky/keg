@@ -1,7 +1,7 @@
 package keg.transport
 
 import io.undertow
-import keg.model.{Request, Response, WebResponse, WsResponse}
+import keg.model.{Request, Response, FinalResponse, WsResponse}
 
 object UndertowTransport:
   // TODO: this is kind of a hack, not sure if we should keep it? But I would
@@ -44,7 +44,7 @@ object UndertowTransport:
 
 class UndertowTransport(
   listeners: Seq[Listener],
-  fn: Request => WebResponse,
+  fn: Request => FinalResponse,
   builder: undertow.Undertow.Builder = undertow.Undertow.builder()
 ) extends Transport:
   UndertowTransport.jbossLogging()

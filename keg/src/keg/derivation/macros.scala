@@ -3,7 +3,7 @@ package keg.derivation
 import scala.quoted.Expr
 import scala.quoted.Type
 import scala.quoted.Quotes
-import keg.model.WebResponse
+import keg.model.FinalResponse
 import keg.model.EndpointResult
 
 class AbortException(val code: Int, val message: String) extends Exception(message)
@@ -31,9 +31,9 @@ def routesImpl()(using q: Quotes) =
     recoveryImpl(m, annot)
 
   '{
-    new keg.model.Routes:
-      def endpoints: Seq[keg.model.Endpoint | keg.model.Recovery] = ${Expr.ofSeq(eps)} ++ ${Expr.ofSeq(recs)}
-      def paths: keg.model.Paths = new keg.model.Paths {}
+    val e: Seq[keg.model.Route] = ${Expr.ofSeq(eps)}
+    val r: Seq[keg.model.Route] = ${Expr.ofSeq(recs)}
+    e ++ r
   }
 
 /** Generate an endpoint for the given method.
@@ -266,7 +266,7 @@ def endpointImpl(using qctx: Quotes)(
         val block = Block(
           List(ctxDef) ++ valDefss.flatten ++ paramChecks(sym, prefix, Ref(ctxSym), valSymss, req.asExprOf[keg.model.Request]).flatten,
           '{
-            EndpointResult.Success(${conversion.asExprOf[keg.model.WebResponse]})
+            EndpointResult.Success(${conversion.asExprOf[keg.model.FinalResponse]})
           }.asTerm
         )
 
@@ -352,6 +352,11 @@ def recoveryImpl(using qctx: Quotes)(
   import qctx.reflect.*
 
   val rt = method.termRef.widenTermRefByName.asInstanceOf[MethodType].resType.widenTermRefByName
+  if !(rt <:< TypeRepr.of[keg.model.Response[keg.model.Data]]) then
+    report.errorAndAbort(
+      s"Recovery method must return Response[Data], but found ${rt.show}",
+      method.pos.get
+    )
 
   val invokeFunc = Lambda(
     Symbol.spliceOwner,
@@ -383,25 +388,6 @@ def recoveryImpl(using qctx: Quotes)(
 
         val base: Term = Ref(method)
         val application = argss.foldLeft(base)((lhs, args) => Apply(lhs, args))
-
-        Implicits.search(TypeRepr.of[Conversion].appliedTo(List(rt, TypeRepr.of[keg.model.Response[keg.model.Data]]))) match
-          case success: ImplicitSearchSuccess =>
-            Apply(
-              Select.unique(success.tree, "apply"),
-              List(application)
-            ).asExprOf[keg.model.Response[keg.model.Data]]
-          case failure: ImplicitSearchFailure =>
-             report.errorAndAbort(
-              s"No given instance of Conversion[${rt.show}, Response[Data]] found for recovery method '${method.name}'",
-              method.pos.get
-            )
-
-    //     if !(rt <:< TypeRepr.of[keg.model.Response[keg.model.Data]]) then
-    // report.errorAndAbort(
-    //   s"Recovery method must return Response[Data], but found ${rt.show}",
-    //   method.pos.get
-    // )
-
         application
       case _ => ???
     }

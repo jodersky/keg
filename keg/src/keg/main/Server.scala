@@ -2,7 +2,7 @@ package keg.main
 
 import keg.model.Request
 import keg.model.Response
-import keg.model.WebResponse
+import keg.model.FinalResponse
 import keg.model.Data
 import keg.model.Endpoint
 import keg.model.Recovery
@@ -40,7 +40,7 @@ import java.util.concurrent.TimeoutException
   *   A set of allowed origins for CSRF protection.
   */
 case class Server(
-    val endpoints: Seq[Endpoint | Recovery],
+    val endpoints: Seq[keg.model.Route],
     listeners: Seq[keg.transport.Listener] = Seq(keg.transport.Listener.Http("::", 8080)),
     debugMode: Boolean = Server.debugFromEnv,
     secrets: Seq[String] = Seq.empty,
@@ -130,7 +130,7 @@ case class Server(
     Interceptor.compose(activeInterceptors)
 
   // invokes the endpoint and recovery if needed
-  private def invoke(ep: Endpoint, req: Request): WebResponse =
+  private def invoke(ep: Endpoint, req: Request): FinalResponse =
     if WebAppUtil.checkCsrf(req.method, req.headers, csrfAllowedOrigins) then
       ep.invoke(req) match
         case EndpointResult.Success(response) =>
@@ -139,7 +139,7 @@ case class Server(
     else
       recovery.invoke(req, ep, EndpointResult.Failure.MethodAbort(403, "CSRF validation failed"))
 
-  private val handlerFunc: Request => WebResponse = (req0: Request) =>
+  private val handlerFunc: Request => FinalResponse = (req0: Request) =>
     scribe.debug(s"Received request: ${req0.method} ${req0.path}")
     val sessionData = req0.cookies.get("_session") match
       case None => Map.empty[String, String]

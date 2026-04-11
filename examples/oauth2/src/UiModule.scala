@@ -86,7 +86,7 @@ class UiModule(app: App, config: Config, db: simplesql.DataSource, userInfoRepo:
         h.form(h.action := "/login", h.method := "POST")(
           h.input(h.`type` := "text", h.name := "username", h.placeholder := "Username", h.autofocus := true, h.autocomplete := "username"),
           h.input(h.`type` := "password", h.name := "password", h.placeholder := "Password", h.autocomplete := "current-password"),
-          h.input(h.`type` := "hidden", h.name := "dest", h.value := req.queryParams.getOrElse("dest", "/")),
+          h.input(h.`type` := "hidden", h.name := "dest", h.value := req.params.getOrElse("dest", "/")),
           h.input(h.`type` := "submit", h.value := "Login")
         )
       )
@@ -176,7 +176,7 @@ class UiModule(app: App, config: Config, db: simplesql.DataSource, userInfoRepo:
       h.p("Enter your password to continue."),
       h.form(h.action := "/sudo", h.method := "POST", h.cls := "sudo-form")(
         h.input(h.`type` := "password", h.name := "password", h.placeholder := "Password", h.autofocus := true, h.autocomplete := "current-password"),
-        h.input(h.`type` := "hidden", h.name := "dest", h.value := req.queryParams.getOrElse("dest", "/")),
+        h.input(h.`type` := "hidden", h.name := "dest", h.value := req.params.getOrElse("dest", "/")),
         h.button(h.`type` := "submit")("Enter Sudo Mode")
       )
     )
@@ -205,4 +205,4 @@ class UiModule(app: App, config: Config, db: simplesql.DataSource, userInfoRepo:
           flash = Map("error" -> "Incorrect password.")
         )
 
-  val routes: keg.model.Routes = keg.routes()
+  val routes: Seq[keg.Route] = keg.routes()

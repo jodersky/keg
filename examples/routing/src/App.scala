@@ -155,7 +155,7 @@ User settings
 // with a username that conflicts with one of your static routes (e.g.
 // "settings" in the example above).
 
-val routes = keg.routes().endpoints
+val routes = keg.routes()
 val server: keg.Server = keg.Server(routes, debugMode = true)
 
 @main def main() = server.start()

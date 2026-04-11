@@ -198,3 +198,47 @@ graph LR
 
 Derivation and model layers are to be considered as library layers, no logging
 or side-effecting is allowed; those are reserved for main and transport.
+
+
+#### Response types
+
+```mermaid
+graph BT
+  simple["Response[A]"]
+  raw["Response[Data] == RawResponse"]
+  ws["WsResponse"]
+  web["FinalResponse"]
+
+  ws --> web
+  raw --> web
+  simple -.-> raw
+```
+
+- the HTTP layer understands two types of responses:
+  - "simple" HTTP response
+  - web sockets
+- these are abstracted by a type alias `FinalResponse`
+- at the end of the day, an endpoint must always return a `FinalResponse`
+
+- however, `Response` is made generic for ergonomics:
+  - in the derivation layer, we allow a user to return any type `T` from a
+    method, so long as there is a `ToResponse[T]` available
+  - we do this for two reasons:
+    - out of symmetry to `FromRequest[?]`
+    - to allow users to define common serialization logic in their config traits
+  - assuming that a method can return an arbitrary `T`, it would be strange and
+    counter-intuitive, if it couldn't return a `Response[T]`. Essentially, we're
+    saying that if serialization logic can be defined in the config trait, that
+    same logic should apply for the case where a user returns that type wrapped
+    in a response. Put another way, we saw that a response can be a specialized
+    return value.
+  - for the conversion to work, the routes() macro uses the fact that
+    `ToResponse`s are path-dependent
+  - however, in the annotated method themselves, there is no `ToResponse`
+    available (at least not without an import, which we want to avoid)
+  - hence, we allow the *construction* of generic `Response[A]`s, but require
+    that they be convertible via a `ToResponse` to a raw response
+  - it would be *possible* to create a duplicate hierarchy, where `RawResponse`
+    becomes an entirely different type (rather than a type alias) which is used
+    by the routing layer, and the generic response is confined to the derivation
+    layer

@@ -23,7 +23,7 @@ val endpoints = Seq(
   keg.Endpoint(
     selector = keg.EndpointSelector.Simple("/echo", Seq("POST")),
     invoke = req =>
-      val body = new String(req.body.readAllBytes(), "UTF-8")
+      val body = new String(req.body().readAllBytes(), "UTF-8")
       keg.model.EndpointResult.Success(
         keg.Response(s"Echo: $body", 200)
       )

@@ -1,6 +1,6 @@
 package keg.main
 
-import keg.model.{EndpointSelector, Request, Response, Endpoint, WsResponse, WebResponse}
+import keg.model.{EndpointSelector, Request, Response, Endpoint, WsResponse, FinalResponse}
 
 /** An interceptor is invoked if a request matches an endpoint, but before the
   * endpoint's invoke handler is called. It can modify the request,
@@ -35,8 +35,8 @@ trait Interceptor:
   def intercept(
     request: Request,
     endpoint: Endpoint,
-    next: Request => WebResponse
-  ): WebResponse
+    next: Request => FinalResponse
+  ): FinalResponse
 
   /** Additional endpoints defined by this interceptor. */
   def endpoints: Seq[Endpoint] = Seq.empty
@@ -48,12 +48,12 @@ object Interceptor:
 
   def compose(
     interceptors: Seq[Interceptor]
-  ): (Request, Endpoint, Request => WebResponse) => WebResponse =
-    var fn: (Request, Endpoint, Request => WebResponse) => WebResponse = (req, _, invoke) => invoke(req)
+  ): (Request, Endpoint, Request => FinalResponse) => FinalResponse =
+    var fn: (Request, Endpoint, Request => FinalResponse) => FinalResponse = (req, _, invoke) => invoke(req)
 
     for interceptor <- interceptors do
       val previousFn = fn
-      fn = (request: Request, endpoint: Endpoint, invoke: Request => WebResponse) =>
+      fn = (request: Request, endpoint: Endpoint, invoke: Request => FinalResponse) =>
         interceptor.intercept(request, endpoint, (req: Request) => previousFn(req, endpoint, invoke))
 
     fn

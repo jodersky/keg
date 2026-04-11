@@ -135,8 +135,8 @@ class App(config: Config) extends keg.derivation.Api:
           keg.Result.Continue(SudoMode(user))
         else
           // val url = new StringBuilder(req.path)
-          // if !req.queryParams.isEmpty then
-          //   val flattened = req.queryParams.items
+          // if !req.params.isEmpty then
+          //   val flattened = req.params.items
           //   url ++= "?"
           //   url ++= flattened.head._1
           //   url ++= "="
@@ -259,9 +259,9 @@ def serve(
 
   val app = new App(config)
   val endpoints =
-    UiModule(app, config, db, userInfoRepo, clientRepo).routes.endpoints ++
-    OidcModule(app, config, db, userInfoRepo, clientRepo).routes.endpoints ++
-    AdminModule(app, config, db, userInfoRepo, clientRepo).routes.endpoints
+    UiModule(app, config, db, userInfoRepo, clientRepo).routes ++
+    OidcModule(app, config, db, userInfoRepo, clientRepo).routes ++
+    AdminModule(app, config, db, userInfoRepo, clientRepo).routes
 
   val listener = if config.server.key.isDefined then
     keg.Listener.Https(

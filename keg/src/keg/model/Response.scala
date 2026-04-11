@@ -50,7 +50,8 @@ case class Response[+A](
 // def map[B](f: A => B): Response[B] =
 //   Response(f(Writer), status, headers)
 
-type WebResponse = Response[Data] | WsResponse
+type RawResponse = Response[Data]
+type FinalResponse = RawResponse | WsResponse
 
 trait Data:
 
@@ -131,5 +132,5 @@ object Response:
 
   import scala.language.implicitConversions
 
-  implicit def compat[A](a: Response[A])(implicit f: A => Data): Response[Data] =
+  implicit def compat[A](a: Response[A])(implicit f: A => Data): RawResponse =
     a.copy(data = f(a.data))

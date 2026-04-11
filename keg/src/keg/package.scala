@@ -7,12 +7,14 @@ export keg.model.ClientCertificate
 export keg.model.UploadFormData
 export keg.model.Cookie
 export keg.model.WsResponse
+export keg.model.Route
 export keg.model.Endpoint
 export keg.model.EndpointResult
 export keg.model.EndpointMeta
 export keg.model.EndpointSelector
 export keg.model.Recovery
-export keg.model.WebResponse
+export keg.model.RawResponse
+export keg.model.FinalResponse
 export keg.model.Ws
 export keg.model.WsActor
 

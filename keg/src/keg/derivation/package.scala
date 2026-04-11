@@ -1,3 +1,3 @@
 package keg.derivation
 
-inline def routes(): keg.model.Routes = ${keg.derivation.routesImpl()}
+inline def routes(): Seq[keg.model.Route] = ${keg.derivation.routesImpl()}

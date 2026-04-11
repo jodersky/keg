@@ -71,7 +71,7 @@ object Static:
     *
     * @see staticFiles for a version that safely handles user-provided subpaths.
     */
-  def staticFile(path: String): Response[Data] =
+  def staticFile(path: String): RawResponse =
     val headers = Seq(
       "Content-Type" -> MimeTypes.fromPath(path),
       "Cache-Control" -> "max-age=604800,public,immutable"
@@ -102,7 +102,7 @@ object Static:
     * @see staticResources for a version that safely handles user-provided
     * subpaths.
     */
-  def staticResource(path: String): Response[Data] =
+  def staticResource(path: String): RawResponse =
     val headers = Seq(
       "Content-Type" -> MimeTypes.fromPath(path),
       "Cache-Control" -> "max-age=604800,public,immutable"
@@ -131,7 +131,7 @@ object Static:
     * This method rejects any path segments that are `..` or `.` to avoid path
     * traversal attacks.
     */
-  def staticFiles(directory: String, remainingPathSegments: Iterable[String]): Response[Data] =
+  def staticFiles(directory: String, remainingPathSegments: Iterable[String]): RawResponse =
     if remainingPathSegments.isEmpty then
       return Response((), 404)
 
@@ -149,7 +149,7 @@ object Static:
 
     staticFile(fullPath.toString())
 
-  def staticResources(directory: String, remainingPathSegments: Iterable[String]): Response[Data] =
+  def staticResources(directory: String, remainingPathSegments: Iterable[String]): RawResponse =
     if remainingPathSegments.isEmpty then
       return Response((), 404)
 

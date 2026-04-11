@@ -36,7 +36,7 @@ def upload(data: keg.model.UploadFormData) =
   keg.Response(s"File content is: $fileContent")
 
 val routes = keg.routes()
-val server: keg.Server = keg.Server(routes.endpoints, debugMode = false)
+val server: keg.Server = keg.Server(routes, debugMode = false)
 
 @main
 def main() =

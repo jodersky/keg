@@ -100,32 +100,32 @@ DISCOVERY = {
 
   @app.get("/authorize")
   def authorize(req: keg.Request, user: User): keg.Response[keg.Data] =
-    if req.queryParams.get("response_type") != Some("code") then
+    if req.params.get("response_type") != Some("code") then
       return error("unsupported_response_type", "Only response_type=code is supported")
 
-    val scope = req.queryParams.get("scope") match
+    val scope = req.params.get("scope") match
       case Some(s) => s.split(" ").toSet
       case None => Set.empty[String]
 
-    val state = req.queryParams.get("state")
-    val nonce = req.queryParams.get("nonce")
+    val state = req.params.get("state")
+    val nonce = req.params.get("nonce")
 
     // validate client
-    val client = req.queryParams.get("client_id").flatMap(id => clientRepo.findByClientId(id)) match
+    val client = req.params.get("client_id").flatMap(id => clientRepo.findByClientId(id)) match
       case Some(c) => c
       case None => return error("invalid_request", "Unknown client_id")
 
-    val redirectUri = req.queryParams.get("redirect_uri") match
+    val redirectUri = req.params.get("redirect_uri") match
       case Some(uri) if client.redirectUris.contains(uri) => uri
       case _ => return error("invalid_request", "Invalid or missing redirect_uri")
 
     // for public clients, require PKCE (only the "S256" method is supported)
-    val codeChallengeMethod = req.queryParams.get("code_challenge_method") match
+    val codeChallengeMethod = req.params.get("code_challenge_method") match
       case Some("S256") => Some("S256")
       case None => None
       case _ => return error("invalid_request", "Only code_challenge_method=S256 is supported")
 
-    val codeChallenge = req.queryParams.get("code_challenge")
+    val codeChallenge = req.params.get("code_challenge")
     val clientIsPublic = client.secret.isEmpty
     if clientIsPublic && codeChallenge.isEmpty then
         return error("invalid_request", "code_challenge is required for public clients")
@@ -448,4 +448,4 @@ DISCOVERY = {
 
     keg.Response(userClaims(user, tokenEntry.scope))
 
-  val routes: keg.model.Routes = keg.routes()
+  val routes: Seq[keg.Route] = keg.routes()

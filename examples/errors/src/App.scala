@@ -57,21 +57,54 @@ custom method not allowed: /foo
 // - `keg.EndpointResult.Exception(ex)` An exception was thrown while processing
 //   the request
 //snippet:start
-// @keg.error()
+@keg.error()
 def errorHandler(
   req: keg.Request,
   ep: keg.Endpoint,
   failure: keg.EndpointResult.Failure
-) =
+): keg.Response[keg.Data] =
+  failure match
+    case keg.EndpointResult.Failure.ParamAbort(param, code, message) =>
+      keg.Response(
+        s"something went wrong when reading parameter ${param}: ${message}\n",
+        code
+      )
+    case keg.EndpointResult.Failure.MethodAbort(code, message) =>
+      keg.Response(
+        s"the endpoint ${ep.selector} rejected the request: ${message}\n",
+        code
+      )
+    case keg.EndpointResult.Failure.Exception(ex) =>
+      keg.Response(
+        s"an exception was thrown while processing the request: ${ex.getMessage}\n",
+        500
+      )
 
-  keg.Response(
-    s"custom error handler: ${failure}\n",
-    500
-  )
+@keg.get("/fail")
+def fail(): keg.Response[keg.Data] =
+  throw new RuntimeException("something went wrong")
+
+@keg.get("/reject")
+def reject(): keg.Response[keg.Data] =
+  keg.abort(400, "request rejected by endpoint")
+//snippet:end
+/* usage snippet
+$ curl "http://localhost:8080/fail" -i
+HTTP/1.1 500 Internal Server Error
+...
+an exception was thrown while processing the request: something went wrong
+*/
+/* usage snippet
+$ curl "http://localhost:8080/reject" -i
+HTTP/1.1 400 Bad Request
+...
+the endpoint Simple(/reject,List(GET)) rejected the request: request rejected by endpoint
+*/
+
 
 val routes = keg.routes()
 
 @main
 def main() =
-  val server = keg.Server(routes.endpoints)
+  val server = keg.Server(routes)
   server.start()
