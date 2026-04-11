@@ -312,6 +312,7 @@ def serve(
   )
 
   server.start()
+  ustats.platform.allMetrics()
   metaServer.start()
   sys.addShutdownHook:
     scribe.info("Shutting down servers")

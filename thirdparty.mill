@@ -2,10 +2,11 @@ package build
 
 import mill.scalalib.*
 
-
+// note: keg does NOT depend on all these libraries! Many are used in examples
+// only, however we centralize all of them here.
 object thirdparty:
   val caffeine = mvn"com.github.ben-manes.caffeine:caffeine:3.1.8"
-  val castor = mvn"com.lihaoyi::castor::0.3.0-8-189e2c"
+  val castor = mvn"com.lihaoyi::castor::0.3.2"
   val geny = mvn"com.lihaoyi::geny::1.1.1"
   val nativeCrypto = mvn"com.github.lolgab::scala-native-crypto::0.3.0"
   val nativeTime = mvn"io.github.cquiroz::scala-java-time::2.6.0"
@@ -16,5 +17,5 @@ object thirdparty:
   val scribeSlf4j = mvn"com.outr::scribe-slf4j2:3.19.0" // for examples
   val undertow = mvn"io.undertow:undertow-core:2.3.20.Final"
   val upickle = mvn"com.lihaoyi::upickle::4.4.1"
-  val ustats = mvn"io.crashbox::ustats:0.7.0"
+  val ustats = mvn"io.crashbox::ustats:0.9.2"
   val utest = mvn"com.lihaoyi::utest::0.9.5"

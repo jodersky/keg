@@ -198,5 +198,3 @@ graph LR
 
 Derivation and model layers are to be considered as library layers, no logging
 or side-effecting is allowed; those are reserved for main and transport.
-
-

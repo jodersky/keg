@@ -7,7 +7,7 @@ object `package` extends build.ExampleModule:
     build.thirdparty.scalatags,
     build.thirdparty.caffeine,
     build.thirdparty.scribeSlf4j,
-    mvn"io.crashbox::clip::0.2.0",
+    mvn"io.crashbox::clip::0.2.1",
     mvn"io.crashbox::simplesql::0.4.0",
     mvn"org.xerial:sqlite-jdbc:3.51.3.0",
     mvn"de.mkammerer:argon2-jvm:2.12",
