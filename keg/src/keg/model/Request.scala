@@ -56,7 +56,43 @@ case class Request(
     if qi == -1 then MultiDict.empty
     else keg.util.Util.decodeQueryString(queryString)
 
-  def body = getBody()
+  /** Returns the request body as an InputStream, limited to the specified
+    * maximum size. */
+  def body(maxSize: Long = Request.DefaultMaxBodySize): java.io.InputStream =
+    new Request.LimitedInputStream(getBody(), maxSize)
 
-  def text(maxLength: Int = 30*1024): String =
-    new String(body.readNBytes(maxLength), "UTF-8")
+  /** Consumes the request body and returns it as a String, limited to the
+    * specified maximum size and using the specified charset. */
+  def text(maxSize: Long = Request.DefaultMaxBodySize, charset: String = "UTF-8"): String =
+    new String(body(maxSize).readAllBytes(), charset)
+
+  /** Consumes the request body and returns it as a byte array, limited to the
+    * specified maximum size. */
+  def bytes(maxSize: Long = Request.DefaultMaxBodySize): Array[Byte] =
+    body(maxSize).readAllBytes()
+
+object Request:
+  // 30 KB default max body size to prevent denial of service attacks. Note that
+  // this is mostly here for one-off endpoints. In a larger or more structured
+  // application, you'd typically either use a dedicated FromRequest with its
+  // own limit, or set the limit explicitly when calling
+  // `request.body(maxSize)`.
+  val DefaultMaxBodySize: Long = 30 * 1024
+
+  private[model] class LimitedInputStream(underlying: java.io.InputStream, maxSize: Long)
+      extends java.io.InputStream:
+    private var bytesRead = 0L
+
+    override def read(): Int =
+      if bytesRead >= maxSize then return -1
+      val b = underlying.read()
+      if b != -1 then bytesRead += 1
+      b
+
+    override def read(buf: Array[Byte], off: Int, len: Int): Int =
+      if bytesRead >= maxSize then return -1
+      val n = underlying.read(buf, off, math.min(len, (maxSize - bytesRead).toInt))
+      if n > 0 then bytesRead += n
+      n
+
+    override def close(): Unit = underlying.close()

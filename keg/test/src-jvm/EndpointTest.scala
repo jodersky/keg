@@ -42,7 +42,7 @@ object EndpointTest extends TestSuite:
 
             keg.EndpointResult.Success(
               keg.Response(
-                data = new String(req.body.readAllBytes(), "UTF-8"),
+                data = new String(req.body().readAllBytes(), "UTF-8"),
                 headers = Seq(
                   "x-pong" -> req.headers.get("x-ping").getOrElse("no ping")
                 ),

@@ -266,24 +266,24 @@ trait StandardFroms extends BaseApi:
   given StringFromRequest: FromRequest[String] with
     def fromRequest(req: Request, ctx: Context): Result[String] =
       try
-        val bytes = req.getBody().readAllBytes()
-        Result.Continue(new String(bytes, java.nio.charset.StandardCharsets.UTF_8))
+        val text = req.text()
+        Result.Continue(text)
       catch case _: Exception => Result.Abort(400, "Request body is not valid UTF-8")
 
   given ByteArrayFromRequest: FromRequest[Array[Byte]] with
     def fromRequest(req: Request, ctx: Context): Result[Array[Byte]] =
-      try Result.Continue(req.getBody().readAllBytes())
+      try Result.Continue(req.bytes())
       catch case _: Exception => Result.Abort(400, "Invalid request body")
 
   given ReadableFromRequest: FromRequest[geny.Readable] with
     def fromRequest(req: Request, ctx: Context): Result[geny.Readable] =
       val readable = new geny.Readable:
-        def readBytesThrough[T](f: InputStream => T): T = f(req.getBody())
+        def readBytesThrough[T](f: InputStream => T): T = f(req.body())
       Result.Continue(readable)
 
   given InputStreamFromRequest: FromRequest[InputStream] with
     def fromRequest(req: Request, ctx: Context): Result[InputStream] =
-      try Result.Continue(req.getBody())
+      try Result.Continue(req.body())
       catch case _: Exception => Result.Abort(400, "Invalid request body")
 
   given dataToResponse: ToResponse[Data] with
@@ -310,7 +310,7 @@ trait ExtraFroms extends StandardFroms:
   given jsonValueFromRequest: FromRequest[ujson.Value] with
     def fromRequest(req: Request, ctx: Context): Result[ujson.Value] =
       try
-        val json = ujson.read(req.body)
+        val json = ujson.read(req.body())
         Result.Continue(json)
       catch
         case e: ujson.ParseException =>
@@ -335,7 +335,7 @@ trait ExtraFroms extends StandardFroms:
   given jsonFromRequest[A](using upickle.default.Reader[A]): FromRequest[A] with
     def fromRequest(req: Request, ctx: Context): Result[A] =
       try
-        val obj = upickle.default.read[A](req.body)
+        val obj = upickle.default.read[A](req.body())
         Result.Continue(obj)
       catch
         case e: upickle.core.AbortException =>
