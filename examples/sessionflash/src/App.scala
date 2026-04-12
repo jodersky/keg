@@ -33,12 +33,12 @@ $ curl "http://localhost:8080/get"
 hello, nice to meet you! you haven't saved anything yet.
 */
 /* usage snippet
-$ curl "http://localhost:8080/post" -d "my secret data" --cookie-jar /tmp/cookies.txt
-saved: my secret data
+$ curl "http://localhost:8080/post" -d "my-secret-data" --cookie-jar /tmp/cookies.txt
+saved: my-secret-data
 */
 /* usage snippet
 $ curl "http://localhost:8080/get" --cookie /tmp/cookies.txt
-hello again! you previously saved: my secret data
+hello again! you previously saved: my-secret-data
 */
 
 // A common pattern is to use cookies to store session data on the client,

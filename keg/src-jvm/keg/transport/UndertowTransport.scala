@@ -42,10 +42,14 @@ object UndertowTransport:
       val after  = hextets.slice(bestStart + bestLen, 8).map(_.toHexString).mkString(":")
       s"$before::$after"
 
+  def builder() =
+    io.undertow.Undertow.builder()
+      .setServerOption(io.undertow.UndertowOptions.ENABLE_RFC6265_COOKIE_VALIDATION, true)
+
 class UndertowTransport(
   listeners: Seq[Listener],
   fn: Request => FinalResponse,
-  builder: undertow.Undertow.Builder = undertow.Undertow.builder()
+  builder: undertow.Undertow.Builder = UndertowTransport.builder()
 ) extends Transport:
   UndertowTransport.jbossLogging()
 
@@ -139,13 +143,9 @@ class UndertowTransport(
           )
           ucookie.setComment(cookie.comment)
           ucookie.setDomain(cookie.domain)
-          ucookie.setExpires(
-            if (cookie.expires == null) null
-            else java.util.Date.from(cookie.expires)
-          )
-          ucookie.setMaxAge(cookie.maxAge)
+          if cookie.expires != null then ucookie.setExpires(java.util.Date.from(cookie.expires))
+          if cookie.maxAge != null then ucookie.setMaxAge(cookie.maxAge)
           ucookie.setPath(cookie.path)
-          ucookie.setVersion(cookie.version)
           ucookie.setDiscard(cookie.discard)
           ucookie.setHttpOnly(cookie.httpOnly)
           ucookie.setSecure(cookie.secure)
@@ -173,7 +173,14 @@ class UndertowTransport(
         .map { c =>
           c.getName() -> keg.model.Cookie(
             name = c.getName(),
-            value = c.getValue(),
+            value =
+              // RFC 6265 allows cookie values to be enclosed in double quotes;
+              // Undertow 2.3.21+ preserves them, so we strip them here.
+              val v = c.getValue()
+              if v != null && v.length >= 2 && v.charAt(0) == '"' && v.charAt(v.length - 1) == '"'
+              then v.substring(1, v.length - 1)
+              else v
+              ,
             comment = c.getComment(),
             domain = c.getDomain(),
             expires =
@@ -181,7 +188,6 @@ class UndertowTransport(
               else c.getExpires().toInstant(),
             maxAge = c.getMaxAge(),
             path = c.getPath(),
-            version = c.getVersion(),
             discard = c.isDiscard(),
             httpOnly = c.isHttpOnly(),
             secure = c.isSecure(),
@@ -201,7 +207,7 @@ class UndertowTransport(
 
       // TODO: we're re-building the target just to deconstruct it in the
       // request again
-      if exchange.getNonDecodedQueryString() != null then
+      if exchange.getQueryString() != null then
         target += "?" + exchange.getQueryString()
 
       val request = keg.model.Request(

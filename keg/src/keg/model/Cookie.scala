@@ -8,7 +8,6 @@ case class Cookie(
     expires: java.time.Instant = null,
     maxAge: Integer = null,
     path: String = null,
-    version: Int = 1,
     discard: Boolean = false,
     httpOnly: Boolean = false,
     secure: Boolean = false,
