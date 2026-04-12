@@ -17,74 +17,26 @@ object `package` extends ScalaModule:
     "--enable-native-access=ALL-UNNAMED"
   )
 
-  def reachabilityMetadata = Task:
-    val data = ujson.Obj(
-      "reflection" -> ujson.Arr(),
-      "jni" -> ujson.Arr(),
-      "resources" -> ujson.Arr(),
-      "foreign" -> ujson.Obj(
-        "downcalls" -> ujson.Arr(
-          ujson.Obj(
-            "returnType" -> "jint",
-            "parameterTypes" -> ujson.Arr("jint", "jlong", "void*"),
-            "options" -> ujson.Obj(
-              "firstVariadicArg" -> ujson.Num(2)
-            )
-          )
-        ),
-        // ujson.Obj(
-        //   "type" -> "downcall",
-        //   "leaf-types" -> ujson.Arr("long", "int", "long", "long", "int")
-        // )
-      )
-    )
-    os.write(Task.dest / "reachability-metadata.json", data.toString())
-    PathRef(Task.dest / "reachability-metadata.json")
-
-  // def localClasspath = Task:
-  //   os.makeDir.all(Task.dest / "META-INF" / "native-image")
-  //   os.copy(reachabilityMetadata().path, Task.dest / "META-INF" / "native-image" / "reachability-metadata.json")
-  //   super.localClasspath() ++ Seq(PathRef(Task.dest))
-
   def nativeImage = Task:
-    // val jar = assembly().path
-    // val metadata = reachabilityMetadata().path
-
     val filteredCp = runClasspath()
       .map(_.path)
       .filter: path =>
         os.exists(path)
       .filter: path =>
-        !path.toString.contains("wildfly") // undertow causes natrive-image to fail, but we don't use it anyway
-
-    for (cp <- filteredCp; if !cp.last.endsWith(".jar")) {
-      Task.log.warn(s"Classpath entry: $cp")
-    }
-
-    Task.log.info(s"Running native-image with classpath: ${filteredCp.map(_.toString).mkString(":")}")
-    Task.log.info(s"mainclass: ${finalMainClass()}")
-
+        !path.toString.contains("wildfly") // undertow causes native-image to fail, but we don't use it anyway
 
     os.proc(
       "native-image",
-      "-Ob",
+      "-Ob", // TODO: -O2 for actual deployment
       "--static-nolibc",
       "--no-fallback",
-      // "--static",
-      // "--libc=musl",
-      // "--no-fallback",
-      // s"-H:NativeLinkerOption=-L${os.home / "opt" / "zlib-musl" / "lib"}",
       "--verbose",
       "--enable-http",
       "--enable-https",
       "--enable-native-access=ALL-UNNAMED",
-      // "-Dnode.args=--sun-misc-unsafe-memory-access=allow", // scribe is on scala 3.3.x, which causes these warnings
-      "--exclude-config", ".*wildfly.*", ".*",
-      // "-o", Task.dest / "mycli",
       s"-cp", filteredCp.mkString(":"),
       finalMainClass(),
       "mycli",
-
     ).call(stdout = os.Inherit)
 
   def nativeConfigure() = Task.Command:
