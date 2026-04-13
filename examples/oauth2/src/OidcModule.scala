@@ -3,6 +3,15 @@ package oauth2
 import com.github.benmanes.caffeine.cache.Caffeine
 import keg.url
 
+case class DeviceCode(
+  deviceCodeHash: HashedToken,
+  userCode: String,
+  clientId: String,
+  scope: Set[String],
+  userId: Option[String],
+  denied: Boolean
+)
+
 case class AuthorizationCode(
   code_hash: HashedToken,
   clientId: String,
@@ -27,6 +36,17 @@ class OidcModule(app: App, config: Config, db: simplesql.DataSource, userInfoRep
 
   val consentRepo = ConsentRepository(db)
   val refreshTokenRepo = RefreshTokenRepository(db)
+
+  val deviceCodes = InMemStore2[HashedToken, String, DeviceCode](
+    scala.concurrent.duration.Duration(5, "minutes")
+  )
+
+  private def generateUserCode(): String =
+    // unambiguous uppercase consonants — no vowels (avoids rude words), no easily confused chars
+    val chars = "BCDFGHJKLMNPQRSTVWXZ"
+    val rng = java.security.SecureRandom()
+    val raw = (0 until 8).map(_ => chars(rng.nextInt(chars.length))).mkString
+    s"${raw.take(4)}-${raw.drop(4)}"
 
   val authorizationCodes = InMemStore[HashedToken, AuthorizationCode](
     scala.concurrent.duration.Duration(10, "minutes")
@@ -71,7 +91,8 @@ DISCOVERY = {
       "token_endpoint_auth_methods_supported" -> ujson.Arr("client_secret_basic", "client_secret_post", "none"),
       "code_challenge_methods_supported" -> ujson.Arr("S256"),
       "claims_supported" -> ujson.Arr("sub", "iss", "aud", "exp", "iat", "name", "email", "roles", "preferred_username", "nonce"),
-      "grant_types_supported" -> ujson.Arr("authorization_code", "refresh_token", "urn:ietf:params:oauth:grant-type:device_code")
+      "grant_types_supported" -> ujson.Arr("authorization_code", "refresh_token", "urn:ietf:params:oauth:grant-type:device_code"),
+      "device_authorization_endpoint" -> s"$issuer/device_authorization"
     )
 
   val allKeys =
@@ -429,8 +450,155 @@ DISCOVERY = {
 
         keg.Response(buildResponse(client, user, entry.scope, entry.sessionId, entry.nonce))
 
+      case "urn:ietf:params:oauth:grant-type:device_code" =>
+        val deviceCodeHex = data.fields.get("device_code") match
+          case Some(c) => c
+          case None => return error("invalid_request", "Missing device_code parameter")
+
+        val deviceCodeHash = Token.fromHex(deviceCodeHex).sha256()
+        val entry = deviceCodes.get1(deviceCodeHash) match
+          case None => return error("expired_token", "Device code is invalid or expired")
+          case Some(e) => e
+
+        if entry.clientId != client.id then
+          return error("invalid_grant", "Device code was not issued to this client")
+
+        if entry.denied then
+          deviceCodes.remove1(deviceCodeHash)
+          return error("access_denied", "User denied the authorization request")
+
+        entry.userId match
+          case None =>
+            return error("authorization_pending", "The user has not yet authorized the device")
+          case Some(userId) =>
+            deviceCodes.remove1(deviceCodeHash) // one-time use
+            val user = userInfoRepository.findByUserId(userId) match
+              case Some(u) => u
+              case None => return error("invalid_grant", "User no longer exists")
+            keg.Response(buildResponse(client, user, entry.scope, sessionId = None))
+
       case other =>
         return error("unsupported_grant_type", s"Grant type $other is not supported")
+
+  @app.post("/device_authorization")
+  def deviceAuthorization(req: keg.Request, data: keg.FormData): keg.Response[keg.Data] =
+    val clientCreds = getClientCreds(req, data)
+    val client = clientCreds.flatMap { case (id, _) => clientRepo.findByClientId(id) } match
+      case Some(c) => c
+      case None => return error("invalid_client", "Unknown client_id", 401)
+
+    val scope = data.fields.get("scope") match
+      case Some(s) => s.split(" ").toSet
+      case None => Set.empty[String]
+
+    val deviceToken = Token.random()
+    val userCode = generateUserCode()
+    val ttlSeconds = 300L
+
+    deviceCodes.put(deviceToken.sha256(), userCode, DeviceCode(
+      deviceCodeHash = deviceToken.sha256(),
+      userCode = userCode,
+      clientId = client.id,
+      scope = scope,
+      userId = None,
+      denied = false
+    ))
+
+    val issuer = config.server.issuer
+    keg.Response(ujson.Obj(
+      "device_code" -> deviceToken.toHex,
+      "user_code" -> userCode,
+      "verification_uri" -> s"$issuer/device",
+      "verification_uri_complete" -> s"$issuer/device?user_code=$userCode",
+      "expires_in" -> ttlSeconds,
+      "interval" -> 5
+    ))
+
+  @app.get("/device")
+  def getDevice(req: keg.Request, user: User): keg.Response[keg.Data] =
+    import scalatags.Text.all as h
+    import h.given
+    val prefilled = req.params.get("user_code")
+    keg.Response(fullPage(req, "Authorize Device")(
+      h.h1("Authorize Device"),
+      h.p("Enter the code shown on your device:"),
+      h.form(h.method := "post", h.action := "/device")(
+        h.input(
+          h.`type` := "text",
+          h.name := "user_code",
+          h.placeholder := "ABCD-EFGH",
+          h.autocomplete := "off",
+          h.autofocus := true,
+          prefilled.map(c => h.value := c)
+        ),
+        h.button(h.`type` := "submit")("Continue")
+      )
+    ))
+
+  @app.post("/device")
+  def postDevice(req: keg.Request, user: User, data: keg.FormData): keg.Response[keg.Data] =
+    import scalatags.Text.all as h
+    import h.given
+
+    val rawCode = data.fields.getOrElse("user_code", "").trim.toUpperCase
+    val entry = deviceCodes.get2(rawCode) match
+      case None =>
+        return keg.Response(fullPage(req, "Authorize Device")(
+          h.h1("Authorize Device"),
+          h.div(h.cls := "flash error")("Invalid or expired code. Please try again."),
+          h.form(h.method := "post", h.action := "/device")(
+            h.input(h.`type` := "text", h.name := "user_code", h.placeholder := "ABCD-EFGH",
+              h.autocomplete := "off", h.autofocus := true),
+            h.button(h.`type` := "submit")("Continue")
+          )
+        ))
+      case Some(e) => e
+
+    val client = clientRepo.findByClientId(entry.clientId) match
+      case Some(c) => c
+      case None => return error("invalid_request", "Client no longer exists")
+
+    keg.Response(fullPage(req, s"Authorize ${client.displayName}")(
+      h.h1(s"${user.name} ↔ ${client.displayName}"),
+      h.p("A device is requesting access to your account:"),
+      h.ul(
+        for s <- entry.scope.toSeq.sorted yield h.li(s)
+      ),
+      h.form(h.method := "post", h.action := "/device/confirm")(
+        h.input(h.`type` := "hidden", h.name := "user_code", h.value := rawCode),
+        h.div(h.display.flex, h.attr("gap") := "0.75rem")(
+          h.button(h.`type` := "submit", h.name := "action", h.value := "allow")("Allow"),
+          h.button(h.`type` := "submit", h.name := "action", h.value := "deny",
+            h.backgroundColor := "transparent", h.color := "#666", h.border := "1px solid #ccc"
+          )("Deny")
+        )
+      )
+    ))
+
+  @app.post("/device/confirm")
+  def postDeviceConfirm(req: keg.Request, user: User, data: keg.FormData): keg.Response[keg.Data] =
+    import scalatags.Text.all as h
+    import h.given
+
+    val rawCode = data.fields.getOrElse("user_code", "").trim.toUpperCase
+    val action = data.fields.getOrElse("action", "deny")
+
+    val entry = deviceCodes.get2(rawCode) match
+      case None => return error("invalid_request", "Device code expired or already used")
+      case Some(e) => e
+
+    if action == "deny" then
+      deviceCodes.put(entry.deviceCodeHash, entry.userCode, entry.copy(denied = true))
+      return keg.Response(fullPage(req, "Device Authorization")(
+        h.h1("Authorization Denied"),
+        h.p("You have denied access. You can close this page.")
+      ))
+
+    deviceCodes.put(entry.deviceCodeHash, entry.userCode, entry.copy(userId = Some(user.id)))
+    keg.Response(fullPage(req, "Device Authorized")(
+      h.h1("Device Authorized"),
+      h.p("The device has been authorized. You can close this page.")
+    ))
 
   @keg.get("/userinfo")
   def userinfo(req: keg.Request): keg.Response[keg.Data] =

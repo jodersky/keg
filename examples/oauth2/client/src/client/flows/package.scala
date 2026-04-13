@@ -138,6 +138,78 @@ def authorizationCodeFlow(
     server.awaitTermination()
 
 
+enum DeviceCodeFlowResult:
+  case Success(tokenResponse: TokenResponse)
+  case Error(code: String, description: Option[String])
+
+def deviceCodeFlow(
+  clientId: String,
+  deviceAuthorizationEndpoint: String = "http://localhost:8080/device_authorization",
+  tokenEndpoint: String = "http://localhost:8080/token",
+  scope: String = "openid profile email offline_access",
+  interval: Int = 5,
+  onPending: (userCode: String, verificationUri: String) => Unit = (userCode, verificationUri) =>
+    println(s"Go to $verificationUri and enter code: $userCode")
+): DeviceCodeFlowResult =
+  try
+    // step 1: request device and user codes
+    val initResponse = requests.post(
+      deviceAuthorizationEndpoint,
+      data = Map("client_id" -> clientId, "scope" -> scope),
+      check = false
+    )
+    if !initResponse.is2xx then
+      val json = ujson.read(initResponse.text())
+      return DeviceCodeFlowResult.Error(
+        json.obj.get("error").map(_.str).getOrElse("invalid_response"),
+        json.obj.get("error_description").map(_.str)
+      )
+
+    val initJson     = ujson.read(initResponse.text())
+    val deviceCode   = initJson("device_code").str
+    val userCode     = initJson("user_code").str
+    val verificationUri = initJson("verification_uri").str
+    val expiresIn    = initJson("expires_in").num.toLong
+    val pollInterval = initJson.obj.get("interval").map(_.num.toInt).getOrElse(interval)
+
+    onPending(userCode, verificationUri)
+
+    // step 2: poll until authorized, denied, or expired
+    val deadline = System.currentTimeMillis() + expiresIn * 1000
+    while System.currentTimeMillis() < deadline do
+      Thread.sleep(pollInterval * 1000L)
+      val pollResponse = requests.post(
+        tokenEndpoint,
+        data = Map(
+          "grant_type" -> "urn:ietf:params:oauth:grant-type:device_code",
+          "device_code" -> deviceCode,
+          "client_id"   -> clientId
+        ),
+        check = false
+      )
+      if pollResponse.is2xx then
+        val json = ujson.read(pollResponse.text())
+        return DeviceCodeFlowResult.Success(TokenResponse(
+          accessToken  = json("access_token").str,
+          expiresIn    = json.obj("expires_in").num.toLong,
+          refreshToken = json.obj.get("refresh_token").map(_.str),
+          idToken      = json.obj.get("id_token").map(_.str)
+        ))
+      else
+        val json  = ujson.read(pollResponse.text())
+        val error = json.obj.get("error").map(_.str).getOrElse("unknown_error")
+        error match
+          case "authorization_pending" => // keep polling
+          case "slow_down"             => Thread.sleep(pollInterval * 1000L) // back off
+          case _                       =>
+            return DeviceCodeFlowResult.Error(error, json.obj.get("error_description").map(_.str))
+
+    DeviceCodeFlowResult.Error("expired_token", Some("Device authorization expired"))
+  catch
+    case e: Exception =>
+      DeviceCodeFlowResult.Error("internal", Some(e.getMessage))
+
+
 enum RefreshTokenFlowResult:
   case Success(tokenResponse: TokenResponse)
   case Error(code: String, description: Option[String])
@@ -176,3 +248,4 @@ def refreshTokenFlow(
   catch
     case e: Exception =>
       RefreshTokenFlowResult.Error("internal", Some(e.getMessage))
+

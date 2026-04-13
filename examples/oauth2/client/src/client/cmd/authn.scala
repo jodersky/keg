@@ -1,7 +1,7 @@
 package client.cmd.authn
 
 class AuthnCtx:
-  val clientId = "4a289809-6d24-4ddf-8844-ceb990d0aa9a"
+  val clientId = "a90185bb-20fd-44c2-a2cd-74906c0058ab"
 
 @clip.group("authn", "Authentication commands")
 def authn() = AuthnCtx()

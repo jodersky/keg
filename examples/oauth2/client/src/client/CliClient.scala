@@ -11,6 +11,7 @@ class CliClient(
   clientId: String,
   authEndpoint: String = "http://localhost:8080/authorize",
   tokenEndpoint: String = "http://localhost:8080/token",
+  deviceAuthorizationEndpoint: String = "http://localhost:8080/device_authorization",
   scope: String = "openid profile email offline_access kubernetes"
 ):
   private val dataDirectory = clip.userdirs("mycli").state
@@ -84,7 +85,12 @@ class CliClient(
         case flows.AuthorizationCodeFlowResult.PortInUse =>
           scribe.debug("Failed to start local server for authorization code flow: port in use")
         case flows.AuthorizationCodeFlowResult.NoBrowserSupport =>
-          scribe.debug("Failed to open browser for authorization code flow: no browser support")
+          scribe.debug("No browser available, falling back to device code flow")
+          flows.deviceCodeFlow(clientId, deviceAuthorizationEndpoint, tokenEndpoint, scope = scope) match
+            case flows.DeviceCodeFlowResult.Success(tokenResponse) =>
+              token = tokenResponse
+            case flows.DeviceCodeFlowResult.Error(code, description) =>
+              scribe.debug(s"Device code flow failed: $code ${description.getOrElse("")}")
         case flows.AuthorizationCodeFlowResult.Error(code, description) =>
           scribe.debug(s"Authorization code flow failed: $code ${description.getOrElse("")}")
 
