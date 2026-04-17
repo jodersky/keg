@@ -9,10 +9,54 @@ object UiModule:
   val successfulLogins = ustats.counter.simple("logins_successful", "Number of successful login attempts")
 
 // user interface module, contains routes for login/logout and serving static assets
-class UiModule(app: App, config: Config, db: simplesql.DataSource, userInfoRepo: UserInfoRepository, clientRepo: ClientRepository):
+class UiModule(app: App, config: Config, db: simplesql.DataSource, userInfoRepo: UserInfoRepository, clientRepo: ClientRepository, webAuthn: WebAuthnService):
   UiModule // initialize the companion object to register metrics
 
   private val consentRepo = ConsentRepository(db)
+
+  // Inline JavaScript for the security-key registration ceremony (account page)
+  private val securityKeyJs = """
+    (function(){
+      const b64 = {
+        decode: s => {
+          const t = s.replace(/-/g,'+').replace(/_/g,'/');
+          return Uint8Array.from(atob(t+'='.repeat((4-t.length%4)%4)),c=>c.charCodeAt(0)).buffer;
+        },
+        encode: buf =>
+          btoa(String.fromCharCode(...new Uint8Array(buf)))
+            .replace(/\+/g,'-').replace(/\//g,'_').replace(/=/g,'')
+      };
+      window.registerKey = async function() {
+        const st = document.getElementById('yubikey-status');
+        st.textContent = 'Waiting for security key\u2026';
+        try {
+          const r1 = await fetch('/webauthn/register/begin',{method:'POST'});
+          if(!r1.ok){st.textContent='Error: '+await r1.text();return;}
+          const opts = await r1.json();
+          const cred = await navigator.credentials.create({publicKey:{
+            ...opts,
+            challenge: b64.decode(opts.challenge),
+            user: {...opts.user, id: b64.decode(opts.user.id)},
+            excludeCredentials: (opts.excludeCredentials||[]).map(c=>({...c,id:b64.decode(c.id)}))
+          }});
+          const r2 = await fetch('/webauthn/register/finish',{
+            method:'POST', headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({
+              id: cred.id, rawId: b64.encode(cred.rawId), type: cred.type,
+              response:{
+                clientDataJSON:    b64.encode(cred.response.clientDataJSON),
+                attestationObject: b64.encode(cred.response.attestationObject)
+              }, clientExtensionResults: {}
+            })
+          });
+          if(r2.ok) location.reload();
+          else st.textContent = 'Registration failed: '+await r2.text();
+        } catch(e) {
+          st.textContent = e.name!=='NotAllowedError' ? 'Error: '+e.message : '';
+        }
+      };
+    })();
+  """
   private val refreshTokenRepo = RefreshTokenRepository(db)
 
   @app.get("/static/*")
@@ -32,6 +76,8 @@ class UiModule(app: App, config: Config, db: simplesql.DataSource, userInfoRepo:
   def index(user: Option[User], req: keg.Request) =
     if user.isDefined then
       val consents = consentRepo.findByUserId(user.get.id)
+      val creds = userInfoRepo.findByUserId(user.get.id)
+        .map(_.webAuthnCredentials).getOrElse(Seq.empty)
       page(req, "Home", user.get.name)(
         h.h2("Account"),
         h.p("Welcome, " + user.get.name + "!"),
@@ -77,7 +123,29 @@ class UiModule(app: App, config: Config, db: simplesql.DataSource, userInfoRepo:
                   h.button(h.`type` := "submit", h.cls := "confirm-dialog-danger")("Revoke")
                 )
               )
-          )
+          ),
+
+        h.h2("Security Keys"),
+        if creds.isEmpty then
+          h.p(h.cls := "text-muted")("No security keys registered.")
+        else
+          h.div(h.cls := "item-list")(
+            creds.map: cred =>
+              h.div(h.cls := "item-row")(
+                h.span(h.cls := "item-row-main")(
+                  h.span(h.cls := "item-row-name")("Security Key"),
+                  h.span(h.cls := "item-row-id")(
+                    s"Added ${cred.addedAt.take(10)} \u00b7 ID: ${cred.id.take(8)}\u2026"
+                  )
+                ),
+                h.form(h.action := s"/yubikey/remove/${cred.id}", h.method := "POST")(
+                  h.button(h.`type` := "submit", h.cls := "confirm-dialog-danger")("Remove")
+                )
+              )
+          ),
+        h.button(h.onclick := "registerKey()")("Add Security Key"),
+        h.p(h.id := "yubikey-status", h.cls := "text-muted")(""),
+        h.script(h.raw(securityKeyJs))
       )
     else
       fullPage(req, "Home")(
@@ -150,10 +218,20 @@ class UiModule(app: App, config: Config, db: simplesql.DataSource, userInfoRepo:
     userInfoRepo.findByName(username) match
       case Some(user) if Password.compare(user.passwordArgon2, password) =>
         UiModule.successfulLogins.inc()
-        val token = oauth2.Token.random()
-        val sessionId = java.util.UUID.randomUUID().toString
-        val now = java.time.Instant.now()
-        val session = Session(sessionId, token.sha256(), user.id, username, now, Some(now))
+        if user.webAuthnCredentials.nonEmpty then
+          // First factor OK — require security key as second factor
+          val pendingToken = oauth2.Token.random().toHex
+          app.pendingYubikeyLogins.put(pendingToken, PendingYubikeyLogin(user.id, user.name, dest))
+          keg.Response(
+            (), 303,
+            headers = Seq("location" -> "/login/yubikey"),
+            cookies = Seq(keg.model.Cookie("pending_login", pendingToken, path = "/"))
+          )
+        else
+          val token = oauth2.Token.random()
+          val sessionId = java.util.UUID.randomUUID().toString
+          val now = java.time.Instant.now()
+          val session = Session(sessionId, token.sha256(), user.id, username, now, Some(now))
           app.sessions.put(token.sha256(), sessionId, session)
           keg.Response(
             (), 303,
@@ -204,5 +282,143 @@ class UiModule(app: App, config: Config, db: simplesql.DataSource, userInfoRepo:
           headers = Seq("location" -> ("/sudo?dest=" + java.net.URLEncoder.encode(dest, "UTF-8"))),
           flash = Map("error" -> "Incorrect password.")
         )
+
+  // ── Security-key challenge page (shown after password OK) ─────────────────
+
+  @app.get("/login/yubikey")
+  def getYubikeyChallenge(req: keg.Request): keg.RawResponse =
+    val pendingToken = req.cookies.get("pending_login").map(_.value).getOrElse("")
+    if pendingToken.isEmpty || app.pendingYubikeyLogins.get(pendingToken).isEmpty then
+      keg.Response((), 303, headers = Seq("location" -> "/"))
+    else
+      val authJs = """
+        (function(){
+          const b64 = {
+            decode: s => {
+              const t = s.replace(/-/g,'+').replace(/_/g,'/');
+              return Uint8Array.from(atob(t+'='.repeat((4-t.length%4)%4)),c=>c.charCodeAt(0)).buffer;
+            },
+            encode: buf =>
+              btoa(String.fromCharCode(...new Uint8Array(buf)))
+                .replace(/\+/g,'-').replace(/\//g,'_').replace(/=/g,'')
+          };
+          async function authenticate() {
+            const st = document.getElementById('yubikey-status');
+            st.textContent = 'Waiting for security key\u2026';
+            try {
+              const r1 = await fetch('/webauthn/authenticate/begin',{method:'POST'});
+              if(!r1.ok){st.textContent='Error: '+await r1.text();return;}
+              const raw = await r1.json();
+              const pk = raw.publicKey || raw;
+              const assertion = await navigator.credentials.get({publicKey:{
+                ...pk,
+                challenge: b64.decode(pk.challenge),
+                allowCredentials: (pk.allowCredentials||[]).map(c=>({...c,id:b64.decode(c.id)}))
+              }});
+              const r2 = await fetch('/webauthn/authenticate/finish',{
+                method:'POST', headers:{'Content-Type':'application/json'},
+                body: JSON.stringify({
+                  id: assertion.id, rawId: b64.encode(assertion.rawId), type: assertion.type,
+                  response:{
+                    authenticatorData: b64.encode(assertion.response.authenticatorData),
+                    clientDataJSON:    b64.encode(assertion.response.clientDataJSON),
+                    signature:         b64.encode(assertion.response.signature),
+                    userHandle:        assertion.response.userHandle
+                                         ? b64.encode(assertion.response.userHandle) : null
+                  }, clientExtensionResults: {}
+                })
+              });
+              if(r2.ok){const d=await r2.json();window.location.href=d.redirect;}
+              else st.textContent='Authentication failed: '+await r2.text();
+            } catch(e) {
+              st.textContent = e.name!=='NotAllowedError' ? 'Error: '+e.message : 'Cancelled.';
+            }
+          }
+          window.addEventListener('DOMContentLoaded', authenticate);
+        })();
+      """
+      keg.Response(
+        fullPage(req, "Security Key Required")(
+          h.h1("Security Key Required"),
+          h.p("Touch your security key to continue signing in."),
+          h.p(h.id := "yubikey-status", h.cls := "text-muted")(""),
+          h.script(h.raw(authJs))
+        )
+      )
+
+  // ── WebAuthn registration ──────────────────────────────────────────────────
+
+  @app.post("/webauthn/register/begin")
+  def webAuthnRegisterBegin(user: User) =
+    userInfoRepo.findByUserId(user.id) match
+      case None => keg.abort(404)
+      case Some(userInfo) =>
+        val json = webAuthn.beginRegistration(user.sess.id, userInfo)
+        keg.Response(json, 200, headers = Seq("Content-Type" -> "application/json"))
+
+  @app.post("/webauthn/register/finish")
+  def webAuthnRegisterFinish(user: User, body: String) =
+    webAuthn.finishRegistration(user.sess.id, body) match
+      case Left(err) => keg.Response(err, 400)
+      case Right(cred) =>
+        userInfoRepo.modify(user.id)(u =>
+          u.copy(webAuthnCredentials = u.webAuthnCredentials :+ cred)
+        )
+        keg.Response("OK", 200)
+
+  @app.post("/yubikey/remove/:credentialId")
+  def removeYubikey(user: User, credentialId: String) =
+    userInfoRepo.modify(user.id)(u =>
+      u.copy(webAuthnCredentials = u.webAuthnCredentials.filterNot(_.id == credentialId))
+    )
+    keg.Response((), 303,
+      headers = Seq("location" -> "/"),
+      flash = Map("success" -> "Security key removed.")
+    )
+
+  // ── WebAuthn authentication (second factor during login) ───────────────────
+
+  @app.post("/webauthn/authenticate/begin")
+  def webAuthnAuthBegin(req: keg.Request) =
+    val pendingToken = req.cookies.get("pending_login").map(_.value).getOrElse("")
+    app.pendingYubikeyLogins.get(pendingToken) match
+      case None => keg.Response("Session not found or expired", 404)
+      case Some(pending) =>
+        userInfoRepo.findByUserId(pending.userId) match
+          case None => keg.Response("User not found", 500)
+          case Some(userInfo) =>
+            val json = webAuthn.beginAuthentication(pendingToken, userInfo)
+            keg.Response(json, 200, headers = Seq("Content-Type" -> "application/json"))
+
+  @app.post("/webauthn/authenticate/finish")
+  def webAuthnAuthFinish(req: keg.Request, body: String): keg.RawResponse =
+    val pendingToken = req.cookies.get("pending_login").map(_.value).getOrElse("")
+    app.pendingYubikeyLogins.get(pendingToken) match
+      case None => keg.Response("Session not found or expired", 404)
+      case Some(pending) =>
+        webAuthn.finishAuthentication(pendingToken, body) match
+          case Left(err) => keg.Response(err, 401)
+          case Right((credId, newSignCount)) =>
+            // Update the stored sign count (replay-attack prevention)
+            userInfoRepo.modify(pending.userId)(u =>
+              u.copy(webAuthnCredentials = u.webAuthnCredentials.map(c =>
+                if c.id == credId then c.copy(signCount = newSignCount) else c
+              ))
+            )
+            app.pendingYubikeyLogins.remove(pendingToken)
+            // Create the real session
+            val token = oauth2.Token.random()
+            val sessionId = java.util.UUID.randomUUID().toString
+            val now = java.time.Instant.now()
+            val session = Session(sessionId, token.sha256(), pending.userId, pending.username, now, Some(now))
+            app.sessions.put(token.sha256(), sessionId, session)
+            keg.Response(
+              ujson.Obj("redirect" -> pending.dest),
+              200,
+              cookies = Seq(
+                keg.model.Cookie("pending_login", "", maxAge = 0, path = "/"),
+                keg.model.Cookie("session", token.toHex, path = "/")
+              )
+            )
 
   val routes: Seq[keg.Route] = keg.routes()

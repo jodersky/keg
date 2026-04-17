@@ -8,13 +8,29 @@ def authn() = AuthnCtx()
 
 @clip.command()
 def login(
-  @clip.context ctx: AuthnCtx
+  @clip.context ctx: AuthnCtx,
+  device: Boolean = false
 ) =
   scribe.info("Logging in...")
-  val result = _root_.client.flows.authorizationCodeFlow(
-    clientId = ctx.clientId
-  )
-  println(result)
+
+  if device then
+    scribe.info("Using device code flow")
+    val result = _root_.client.flows.deviceCodeFlow(
+      clientId = ctx.clientId,
+      deviceAuthorizationEndpoint = "http://localhost:8080/device_authorization",
+      tokenEndpoint = "http://localhost:8080/token",
+      scope = "openid profile email offline_access kubernetes"
+    )
+    println(result)
+  else
+    scribe.info("Using authorization code flow")
+    val result = _root_.client.flows.authorizationCodeFlow(
+      clientId = ctx.clientId,
+      authEndpoint = "http://localhost:8080/authorize",
+      tokenEndpoint = "http://localhost:8080/token",
+      scope = "openid profile email offline_access kubernetes"
+    )
+    println(result)
 
 @clip.command()
 def logout() =

@@ -493,7 +493,7 @@ DISCOVERY = {
 
     val deviceToken = Token.random()
     val userCode = generateUserCode()
-    val ttlSeconds = 300L
+    val ttlSeconds = 300
 
     deviceCodes.put(deviceToken.sha256(), userCode, DeviceCode(
       deviceCodeHash = deviceToken.sha256(),

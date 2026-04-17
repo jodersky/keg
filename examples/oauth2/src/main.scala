@@ -101,11 +101,18 @@ case class Session(
 
 case class SudoMode(user: User)
 
+// Temporary state for a login that passed the password check but still needs a security-key assertion
+case class PendingYubikeyLogin(userId: String, username: String, dest: String)
+
 class App(config: Config) extends keg.derivation.Api:
 
   // maps sessionId -> userId
   val sessions: InMemStore2[HashedToken, String, Session] =
     InMemStore2(config.server.sessionTtl)
+
+  // short-lived store for logins awaiting a WebAuthn assertion (5-minute TTL)
+  val pendingYubikeyLogins: InMemStore[String, PendingYubikeyLogin] =
+    InMemStore(scala.concurrent.duration.Duration("5 minutes"))
 
   def lookup(cookie: keg.model.Cookie): Option[User] =
     val tokenHash = oauth2.Token.fromHex(cookie.value).sha256()
@@ -258,8 +265,17 @@ def serve(
   val clientRepo = ClientRepository(db)
 
   val app = new App(config)
+
+  val rpId   = java.net.URI.create(config.server.issuer).getHost
+  val webAuthn = WebAuthnService(
+    rpId         = rpId,
+    rpName       = "SSO",
+    origin       = config.server.issuer,
+    userInfoRepo = userInfoRepo
+  )
+
   val endpoints =
-    UiModule(app, config, db, userInfoRepo, clientRepo).routes ++
+    UiModule(app, config, db, userInfoRepo, clientRepo, webAuthn).routes ++
     OidcModule(app, config, db, userInfoRepo, clientRepo).routes ++
     AdminModule(app, config, db, userInfoRepo, clientRepo).routes
 

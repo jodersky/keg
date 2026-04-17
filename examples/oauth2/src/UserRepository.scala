@@ -1,12 +1,21 @@
 package oauth2
 
+// A stored WebAuthn credential (one per registered security key).
+case class WebAuthnCredential(
+  id: String,        // base64url-encoded credential ID
+  publicKey: String, // base64url-encoded COSE public key
+  signCount: Long,
+  addedAt: String    // ISO-8601 instant
+) derives upickle.default.ReadWriter
+
 case class UserInfo(
   id: String,
   name: String,
   email: String,
   passwordArgon2: String,
   roles: Seq[String],
-  extraClaims: Map[String, String]
+  extraClaims: Map[String, String],
+  webAuthnCredentials: Seq[WebAuthnCredential] = Seq.empty
 ) derives upickle.default.ReadWriter
 
 class UserInfoRepository(db: simplesql.DataSource):
