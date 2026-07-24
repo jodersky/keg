@@ -1,19 +1,32 @@
 //| mill-version: 1.1.4
 //| mvnDeps: ["com.lihaoyi::mill-contrib-jmh:$MILL_VERSION"]
 
-import mill.*, scalalib.*, scalanativelib.*, scalafmt.*
+import mill.*, scalalib.*, scalanativelib.*, scalafmt.*, publish.*
 import build.thirdparty
 
 val scala3 = "3.8.2"
 val scalaNative = "0.5.10"
 
-trait KegMultiModule extends ScalaModule:
+trait KegMultiModule extends ScalaModule with PublishModule:
   def scalaVersion = scala3
   def scalacOptions = Seq("-deprecation", "-feature", "-unchecked", "-encoding", "utf8", "-preview")
   def moduleDir = super.moduleDir / os.up
   def sources = Task.Sources(
     moduleDir / "src",
     moduleDir / "src-jvm",
+  )
+  def artifactName = Task:
+    val base = super.artifactName()
+    base.replaceAll("-jvm$", "").replaceAll("-native$", "")
+
+  def publishVersion = "0.1.0-SNAPSHOT"
+  def pomSettings = PomSettings(
+    description = artifactName(),
+    organization = "io.crashbox",
+    url = "https://github.com/jodersky/keg",
+    licenses = Seq(License.MIT),
+    versionControl = VersionControl.github("jodersky", "keg"),
+    developers = Seq(Developer("jodersky", "Jakob Odersky", "https://github.com/jodersky"))
   )
 
 trait KegTestModule extends TestModule:

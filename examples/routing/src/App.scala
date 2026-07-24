@@ -61,9 +61,11 @@ $ curl "http://localhost:8080/hello/alice"
 Hello, alice!
 */
 
+//snippet:start
 @keg.get("/add/:x/:y")
 def add(x: Int, y: Int) =
   s"$x + $y = ${x + y}"
+//snippet:end
 /* usage snippet
 $ curl "http://localhost:8080/add/3/4"
 3 + 4 = 7
