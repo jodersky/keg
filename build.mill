@@ -1,11 +1,11 @@
-//| mill-version: 1.1.4
+//| mill-version: 1.1.7
 //| mvnDeps: ["com.lihaoyi::mill-contrib-jmh:$MILL_VERSION"]
 
 import mill.*, scalalib.*, scalanativelib.*, scalafmt.*, publish.*
 import build.thirdparty
 
-val scala3 = "3.8.2"
-val scalaNative = "0.5.10"
+val scala3 = "3.8.4"
+val scalaNative = "0.5.12"
 
 trait KegMultiModule extends ScalaModule with PublishModule:
   def scalaVersion = scala3
