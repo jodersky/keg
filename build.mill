@@ -52,7 +52,8 @@ object keg extends Module:
     def moduleDeps = Seq(keg.forms.jvm)
     def mvnDeps = commonDeps ++ Seq(
       // thirdparty.slf4jSimple,
-      thirdparty.undertow
+      thirdparty.undertow,
+      thirdparty.jbossThreads
     )
     object test extends ScalaTests with KegTestModule:
       def mvnDeps = super.mvnDeps() ++ Seq(

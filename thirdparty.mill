@@ -8,6 +8,7 @@ object thirdparty:
   val caffeine = mvn"com.github.ben-manes.caffeine:caffeine:3.1.8"
   val castor = mvn"com.lihaoyi::castor::0.3.2"
   val geny = mvn"com.lihaoyi::geny::1.1.1"
+  val jbossThreads = mvn"org.jboss.threads:jboss-threads:3.9.2" // upgrade undertow's transitive dependency to something which won't give unsafe warnings!
   val nativeCrypto = mvn"com.github.lolgab::scala-native-crypto::0.3.0"
   val nativeTime = mvn"io.github.cquiroz::scala-java-time::2.6.0"
   val oslib = mvn"com.lihaoyi::os-lib:0.9.1"
@@ -15,7 +16,7 @@ object thirdparty:
   val scalatags = mvn"com.lihaoyi::scalatags::0.13.1"
   val scribe = mvn"com.outr::scribe::3.19.0"
   val scribeSlf4j = mvn"com.outr::scribe-slf4j2:3.19.0" // for examples
-  val undertow = mvn"io.undertow:undertow-core:2.3.24.Final"
+  val undertow = mvn"io.undertow:undertow-core:2.3.26.Final"
   val upickle = mvn"com.lihaoyi::upickle::4.4.1"
   val ustats = mvn"io.crashbox::ustats:0.9.2"
   val utest = mvn"com.lihaoyi::utest::0.9.5"

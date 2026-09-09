@@ -290,7 +290,7 @@ class UndertowTransport(
     () =>
       shutdownHandler.shutdown()
       shutdownHandler.awaitShutdown()
-      server.stop()
+      if server != null then server.stop()
       shutdownLatch.countDown(),
     "shutdown-waiter"
   )

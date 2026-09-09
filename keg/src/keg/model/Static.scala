@@ -166,3 +166,70 @@ object Static:
         fullPath ++= segment
 
     staticResource(fullPath.toString())
+
+  def fromRequest(
+    request: Request,
+    directory: String,
+    headers: Seq[(String, String)] = Seq(
+      "Cache-Control" -> "max-age=604800,public,immutable"
+    ),
+    negotiateEncodings: Seq[String] = Seq("br", "gzip")
+  ): RawResponse =
+    if request.remainingPathSegments.isEmpty then
+      return Response((), 404)
+
+    val fullPathBuilder = new StringBuilder()
+    fullPathBuilder ++= directory
+    val it = request.remainingPathSegments.iterator
+    while it.hasNext do
+      val segment = it.next()
+      if segment == ".." || segment == "." then
+        // to err on the safe side, reject paths with .. or .
+        return Response((), 404)
+      else
+        fullPathBuilder ++= "/"
+        fullPathBuilder ++= segment
+
+    // requested path
+    val fullPath = fullPathBuilder.result()
+
+    // actually read path
+    var servedPath = fullPath
+    val finalHeaders = Seq.newBuilder[(String, String)]
+
+    if negotiateEncodings.nonEmpty then
+      var acceptableEncodings = request.headers.getOrElse("accept-encoding", "").split(",\\s+")
+      // arbitrarily limit number of encodings to prevent denial of service
+      if acceptableEncodings.length > 5 then acceptableEncodings = acceptableEncodings.take(5)
+
+      val encodingIt = negotiateEncodings.iterator
+      var found = false
+      while encodingIt.hasNext && !found do
+        val enc = encodingIt.next()
+        if acceptableEncodings.contains(enc) then
+          val candidate = fullPath + "." + enc // TODO: is compression always equal to extension?
+          if this.getClass().getResource(candidate) != null then
+            servedPath = candidate
+            finalHeaders += "Content-Encoding" -> enc
+            found = true
+
+    finalHeaders += "Content-Type" ->  MimeTypes.fromPath(fullPath)
+    finalHeaders ++= headers
+
+    val assetStream = this.getClass().getResourceAsStream(servedPath)
+    if assetStream == null then
+      Response((), 404)
+    else
+      Response(
+        data = new Data:
+          def write(out: OutputStream): Unit =
+            try
+              assetStream.transferTo(out)
+            finally
+              assetStream.close()
+          def headers: Seq[(String, String)] = Seq()
+          def contentLength: Option[Long] = None
+        ,
+        status = 200,
+        headers = finalHeaders.result()
+      )

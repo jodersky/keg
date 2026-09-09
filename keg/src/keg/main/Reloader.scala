@@ -64,9 +64,14 @@ object Reloader extends Interceptor:
         val buffer = new java.io.ByteArrayOutputStream()
         response.data.write(buffer)
         val content = buffer.toString("UTF-8")
-        val injectedContent = content.replace(
-          "</body>",
-          s"""<script src="/__dev_ws.js"></script></body>"""
-        )
-        response.copy(data = injectedContent, headers = response.headers ++ Seq("content-type" -> "text/html; charset=UTF-8"))
+
+        // only inject reloader script on full pages (not HTML fragments)
+        if content.startsWith("<!doctype html>") then
+          val injectedContent = content.replace(
+            "</body>",
+            s"""<script src="/__dev_ws.js"></script></body>"""
+          )
+          response.copy(data = injectedContent, headers = response.headers ++ Seq("content-type" -> html))
+        else
+          response
       case _ => response
