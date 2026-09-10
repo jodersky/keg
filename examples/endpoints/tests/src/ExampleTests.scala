@@ -25,7 +25,7 @@ object ExampleTests extends TestSuite:
 
         val r3 = requests.get(s"$baseUrl/fail", check = false)
         assert(r3.statusCode == 500)
-        assert(r3.text() == "Custom error page: MethodAbort(418,I'm a teapot)")
+        assert(r3.text() == "Custom error page: keg.main.AbortException: I'm a teapot")
 
         val r4 = requests.get(s"$baseUrl/nonexistent", check = false)
         assert(r4.statusCode == 404)

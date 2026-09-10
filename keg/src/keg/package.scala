@@ -9,9 +9,7 @@ export keg.model.Cookie
 export keg.model.WsResponse
 export keg.model.Route
 export keg.model.Endpoint
-export keg.model.EndpointResult
 export keg.model.EndpointMeta
-export keg.model.EndpointSelector
 export keg.model.Recovery
 export keg.model.RawResponse
 export keg.model.FinalResponse
@@ -30,9 +28,6 @@ export keg.default.post
 export keg.default.put
 export keg.default.delete
 export keg.default.patch
-export keg.default.websocket
-export keg.default.notFound
-export keg.default.methodNotAllowed
 export keg.default.error
 
 export keg.derivation.routes
@@ -43,7 +38,8 @@ export keg.forms.FormData
 // export keg.forms.FormPart
 // export keg.forms.FromForm
 
-export keg.derivation.abort
+export keg.main.AbortException
+export keg.main.abort
 
 def urlEncode(s: String): String =
   java.net.URLEncoder.encode(s, "UTF-8")

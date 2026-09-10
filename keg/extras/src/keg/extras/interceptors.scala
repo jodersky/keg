@@ -1,7 +1,7 @@
 package keg.extras
 
 import keg.main.Interceptor
-import keg.model.{Endpoint, Request, Response, FinalResponse, WsResponse, EndpointSelector}
+import keg.model.{Endpoint, Request, Response, FinalResponse, WsResponse}
 
 class LoggingInterceptor extends Interceptor:
 
@@ -32,11 +32,8 @@ class TimingInterceptor extends Interceptor:
   // that we have metrics for them even if they haven't been hit yet
   override def onStartup(endpoints: Seq[Endpoint]): Unit =
     for ep <- endpoints do
-      ep.selector match
-        case EndpointSelector.Simple(path, methods) =>
-          for method <- methods do
-            histogram(method, path, "200")
-        case _ =>
+      for method <- ep.methods do
+        histogram(method, ep.path, "200")
 
   def intercept(request: Request, endpoint: Endpoint, next: Request => FinalResponse): FinalResponse =
     val startTime = System.nanoTime()
@@ -54,12 +51,10 @@ class TimingInterceptor extends Interceptor:
 
   override def endpoints: Seq[Endpoint] = Seq(
     Endpoint(
-      selector = keg.model.EndpointSelector.Simple("/metrics", Seq("GET")),
+      "/metrics", Seq("GET"),
       invoke = _ =>
-        keg.model.EndpointResult.Success(
-          Response(
-            data = ustats.Registry.global
-          )
+        Response(
+          data = ustats.Registry.global
         )
     )
   )

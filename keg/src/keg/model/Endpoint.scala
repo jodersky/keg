@@ -6,22 +6,10 @@ sealed trait Route
 /** An endpoint represents a function that is called in response to an HTTP
   * request.
   *
-  * Each endpoint has a *selector* that determines when the endpoint should be
-  * invoked based on criteria from the incoming request:
-  *
-  * - Simple endpoints are matched by path and HTTP method.
-  * - WebSocketUpgrade endpoints are matched by path and the presence of an
-  *   `Upgrade: websocket` header.
-  * - NotFound and MethodNotAllowed endpoints are special endpoints that are
-  *   called when no other endpoint matches or when the method is not allowed,
-  *   respectively
-  *
-  * The `invoke` function of the endpoint is called when the endpoint is
-  * selected, and is passed the incoming request. It returns an
-  * `EndpointResult`, which can be either a success (with a response) or a
-  * failure. See `EndpointResult` for more details on the possible results and
-  * how to handle them. In any case, the invoke function must never throw an
-  * exception; any exceptions should be caught and returned as a failure result.
+  * The function of an endpoint is passed the request and should return a
+  * response. The function may also throw, which will cause a recovery to be
+  * invoked. By convention, `AbortException` should be thrown when the
+  * application code wished to respond with a specific kind of HTTP error.v
   *
   * The `meta` field contains metadata about the endpoint, such as the source
   * file and line number where the endpoint was defined. This is used when
@@ -30,94 +18,22 @@ sealed trait Route
   *
   * An endpoint is one of the core building blocks of a Keg web application,
   * serving as the main interface between the user-level annotated code and the
-  * "main routing" layer. While you can build endpoints manually, it is more
-  * common to use the provided macros (e.g. `@get`, `@post`, etc) to define
-  * endpoints in a more concise and user-friendly way.
+  * main routing layer. While you can build endpoints manually, it is more
+  * common to use the annotations (e.g. `@get`, `@post` etc) in conjunction with
+  * the `keg.routes()` macro to define endpoints in a more concise and
+  * user-friendly way.
   *
   * @see `Recovery` on how to handle errors and exceptions that occur during
   * endpoint invocation
   *
-  * @param selector
-  *   The selector that determines when this endpoint should be invoked based on
-  *   the incoming request.
-  * @param invoke
-  *   The function that is called when the endpoint is invoked.
-  * @param meta
-  *   Metadata about the endpoint, such as the source file and line number where
-  *   the endpoint was defined.
-  *
+  * @param invoke The function that is called when the endpoint is invoked.
+  * @param meta Metadata about the endpoint, such as the source file and line
+  *   number where the endpoint was defined.
   */
-case class Endpoint(
-  selector: EndpointSelector,
-  invoke: Request => EndpointResult,
-  meta: EndpointMeta
-) extends Route
-
+case class Endpoint(path: String, methods: Iterable[String], invoke: Request => FinalResponse, meta: EndpointMeta) extends Route
 object Endpoint:
-
-  def apply(selector: EndpointSelector, invoke: Request => EndpointResult)(using pos: keg.util.Pos): Endpoint =
-    Endpoint(
-      selector,
-      invoke,
-      EndpointMeta(
-        file = pos.file,
-        line = pos.line,
-        column = pos.column,
-        function = pos.function
-      )
-    )
-
-enum EndpointSelector:
-  case Simple(path: String, methods: Seq[String])
-  case WebSocketUpgrade(path: String)
-  case NotFound
-  case MethodNotAllowed
-
-/** Return value from an endpoint invocation. */
-sealed trait EndpointResult
-object EndpointResult:
-
-  /** A successful result from an endpoint invocation, containing either a HTTP
-    * response or a WebSocket response which will be returned to the client.
-    *
-    * Note that a successful result does not necessarily mean that a "success"
-    * in business logic terms; it only means that the endpoint was able to
-    * process the request and generate a response without any errors or
-    * exceptions. The response itself may indicate an error (e.g. by having a
-    * 4xx or 5xx status code), but as far as the endpoint invocation is
-    * concerned, it is still a successful result since it was able to handle the
-    * request and produce a response.
-    */
-  case class Success(response: FinalResponse) extends EndpointResult
-
-  /** The endpoint invocation failed. Sub types represent different failure scenarios. */
-  sealed trait Failure extends EndpointResult
-  object Failure:
-
-    /** The endpoint invocation failed due to an error extracting a value for a
-      * parameter (scala method parameter, not HTTP).
-      *
-      * @param param The name of the parameter that failed to be extracted.
-      * @param code The suggested HTTP status code to return to the client (e.g. 400 for bad request).
-      * @param message A message describing the reason for the failure.
-      */
-    case class ParamAbort(param: String, code: Int, message: String) extends Failure
-
-    /** The endpoint invocation failed due to an explicit refusal in the scala
-      * method implementing the invocation. E.g. a 403 forbidden error returned
-      * from the method.
-      *
-      * @param code The suggested HTTP status code to return to the client.
-      * @param message A message describing the reason for the failure.
-      */
-    case class MethodAbort(code: Int, message: String) extends Failure
-
-    /** The endpoint invocation failed due to an exception being thrown during
-      * the execution of the scala method implementing the invocation.
-      *
-      * @param throwable The exception that was thrown.
-      */
-    case class Exception(throwable: Throwable) extends Failure
+  def apply(path: String, methods: Iterable[String] = Seq("GET"), invoke: Request => FinalResponse)(using pos: keg.util.Pos): Endpoint =
+    Endpoint(path, methods, invoke, EndpointMeta())
 
 case class EndpointMeta(
   file: String,
@@ -152,5 +68,5 @@ object EndpointMeta:
   * failure result, and returns a response to be sent to the client.
   */
 case class Recovery(
-  invoke: (Request, Endpoint, EndpointResult.Failure) => RawResponse
+  invoke: (Request, Throwable, Option[Endpoint]) => FinalResponse
 ) extends Route

@@ -136,7 +136,6 @@ trait BaseApi:
   trait ToResponse[-A]:
     def toResponse(value: A, ctx: Context): keg.model.FinalResponse
 
-  trait EndpointAnnotation extends scala.annotation.StaticAnnotation
 
   /** An annotation for marking endpoint methods.
     *
@@ -150,22 +149,12 @@ trait BaseApi:
     * String` argument as the first argument. This is necessary for the
     * `route()` macro to work correctly.
     */
-  class request(val path: String, val methods: Seq[String]) extends EndpointAnnotation
+  class request(val path: String, val methods: Seq[String]) extends scala.annotation.StaticAnnotation
   class get(path: String) extends request(path, Seq("GET"))
   class post(path: String) extends request(path, Seq("POST"))
   class put(path: String) extends request(path, Seq("PUT"))
   class delete(path: String) extends request(path, Seq("DELETE"))
   class patch(path: String) extends request(path, Seq("PATCH"))
-
-  /** An annotation for marking websocket endpoint methods. This is the same as
-    * `EndpointAnnotation`, but will generate an endpoint using the "websocket"
-    * selector, which means the endpoint will only be invoked for websocket
-    * upgrade requests.
-    */
-  class websocket(path: String) extends EndpointAnnotation
-
-  class notFound() extends EndpointAnnotation
-  class methodNotAllowed() extends EndpointAnnotation
 
   class error() extends scala.annotation.StaticAnnotation
 

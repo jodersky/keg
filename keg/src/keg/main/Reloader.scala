@@ -21,7 +21,8 @@ object Reloader extends Interceptor:
 
   override val endpoints = Seq(
     keg.model.Endpoint(
-      selector = keg.model.EndpointSelector.WebSocketUpgrade("/__dev_ws"),
+      "/__dev_ws",
+      Seq("GET"),
       invoke = (request: keg.model.Request) =>
         val r = keg.model.WsResponse(
           channel =>
@@ -39,12 +40,13 @@ object Reloader extends Interceptor:
                 clients.remove(channel)
               case _ => ()
         )
-        keg.model.EndpointResult.Success(r)
+        r
     ),
     keg.model.Endpoint(
-      selector = keg.model.EndpointSelector.Simple("/__dev_ws.js", Seq("GET")),
+      "/__dev_ws.js",
+      Seq("GET"),
       invoke = (request: keg.model.Request) =>
-        keg.model.EndpointResult.Success(keg.model.Static.staticResource("/reload.js"))
+        keg.model.Static.staticResource("/reload.js")
     )
   )
 
@@ -66,7 +68,7 @@ object Reloader extends Interceptor:
         val content = buffer.toString("UTF-8")
 
         // only inject reloader script on full pages (not HTML fragments)
-        if content.startsWith("<!doctype html>") then
+        if content.startsWith("<!DOCTYPE html>") then
           val injectedContent = content.replace(
             "</body>",
             s"""<script src="/__dev_ws.js"></script></body>"""

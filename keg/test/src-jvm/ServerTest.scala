@@ -6,12 +6,10 @@ object ServerTest extends TestSuite:
     test("basic"):
       val endpoints = Seq(
         keg.Endpoint(
-          selector = keg.EndpointSelector.Simple("/hello", Seq("GET")),
+          "/hello", Seq("GET"),
           invoke = (req: keg.Request) =>
-            keg.EndpointResult.Success(
-              keg.Response(
-                "Hello, World!"
-              )
+            keg.Response(
+              "Hello, World!"
             ),
           meta = keg.EndpointMeta()
         )
@@ -32,12 +30,10 @@ object ServerTest extends TestSuite:
     test("basic uhttp"):
       val endpoints = Seq(
         keg.Endpoint(
-          selector = keg.EndpointSelector.Simple("/hello", Seq("GET")),
+          "/hello", Seq("GET"),
           invoke = (req: keg.Request) =>
-            keg.EndpointResult.Success(
-              keg.Response(
-                "Hello, World!"
-              )
+            keg.Response(
+              "Hello, World!"
             ),
           meta = keg.EndpointMeta()
         )
@@ -72,12 +68,10 @@ object ServerTest extends TestSuite:
     test("method not allowed"):
       val endpoints = Seq(
         keg.Endpoint(
-          selector = keg.EndpointSelector.Simple("/hello", Seq("GET")),
+          "/hello", Seq("GET"),
           invoke = (req: keg.Request) =>
-            keg.EndpointResult.Success(
-              keg.Response(
-                "Hello, World!",
-              )
+            keg.Response(
+              "Hello, World!",
             ),
           meta = keg.EndpointMeta()
         )
@@ -89,34 +83,28 @@ object ServerTest extends TestSuite:
       server.start()
       try
         val response = requests.post(s"http://[::1]:8081/hello", check = false)
-        assert(response.statusCode == 405)
+        assert(response.statusCode == 404)
       finally
         server.stop()
 
     test("multiple endpoints"):
       val endpoints = Seq(
         keg.Endpoint(
-          selector = keg.EndpointSelector.Simple("/hello", Seq("GET")),
+          "/hello", Seq("GET"),
           invoke = (req: keg.Request) =>
-            keg.EndpointResult.Success(
-              keg.Response("Hello, World!")
-            ),
+            keg.Response("Hello, World!"),
           meta = keg.EndpointMeta()
         ),
         keg.Endpoint(
-          selector = keg.EndpointSelector.Simple("/goodbye", Seq("GET")),
+          "/goodbye", Seq("GET"),
           invoke = (req: keg.Request) =>
-            keg.EndpointResult.Success(
-              keg.Response("Goodbye, World!")
-            ),
+            keg.Response("Goodbye, World!"),
           meta = keg.EndpointMeta()
         ),
         keg.Endpoint(
-          selector = keg.EndpointSelector.Simple("/all-methods", Seq("GET", "POST", "PUT", "DELETE", "PATCH")),
+          "/all-methods", Seq("GET", "POST", "PUT", "DELETE", "PATCH"),
           invoke = (req: keg.Request) =>
-            keg.EndpointResult.Success(
-              keg.Response(s"Hello via ${req.method}!")
-            ),
+            keg.Response(s"Hello via ${req.method}!"),
           meta = keg.EndpointMeta()
         )
       )

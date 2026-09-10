@@ -11,18 +11,18 @@ object TlsTest extends TestSuite:
   )(fn: String => Unit): Unit =
     val endpoints = Seq(
       keg.Endpoint(
-        selector = keg.EndpointSelector.Simple("/hello", Seq("GET")),
+        "/hello", Seq("GET"),
         invoke = req =>
           val name = req.clientCertificate.map(_.subject).getOrElse("world")
-          keg.EndpointResult.Success(keg.Response(s"Hello, ${name}!"))
+          keg.Response(s"Hello, ${name}!")
       ),
       keg.Endpoint(
-        selector = keg.EndpointSelector.Simple("/altnames", Seq("GET")),
+        "/altnames", Seq("GET"),
         invoke = req =>
           val altNames = req.clientCertificate
             .map(_.altNames.map((t, v) => s"$t:$v").mkString(","))
             .getOrElse("")
-          keg.EndpointResult.Success(keg.Response(altNames))
+          keg.Response(altNames)
       )
     )
 

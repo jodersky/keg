@@ -15,7 +15,7 @@ import keg.util.MultiDict
 
 object Util {
   def firstFutureOf[T](futures: Seq[Future[T]])(implicit ec: ExecutionContext) = {
-    val p = Promise[T]
+    val p = Promise[T]()
     futures.foreach(_.foreach(p.trySuccess))
     p.future
   }

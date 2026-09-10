@@ -1,6 +1,6 @@
 package keg.main
 
-import keg.model.{EndpointSelector, Request, Response, Endpoint, WsResponse, FinalResponse}
+import keg.model.{Request, Response, Endpoint, WsResponse, FinalResponse}
 
 /** An interceptor is invoked if a request matches an endpoint, but before the
   * endpoint's invoke handler is called. It can modify the request,

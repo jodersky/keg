@@ -288,18 +288,12 @@ def serve(
   val metaServer = keg.Server(
     endpoints = Seq(
       keg.model.Endpoint(
-        selector = keg.model.EndpointSelector.Simple("/health", Seq("GET")),
-        invoke = _ =>
-          keg.model.EndpointResult.Success(
-            keg.Response("OK")
-          )
+        "/health", Seq("GET"),
+        invoke = _ => keg.Response("OK")
       ),
       keg.model.Endpoint(
-        selector = keg.model.EndpointSelector.Simple("/metrics", Seq("GET")),
-        invoke = _ =>
-          keg.model.EndpointResult.Success(
-            keg.Response(ustats.Registry.global)
-          )
+        "/metrics", Seq("GET"),
+        invoke = _ => keg.Response(ustats.Registry.global)
       ),
     ),
     listeners = Seq(

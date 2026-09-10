@@ -20,9 +20,9 @@ object DerivationTest extends TestSuite:
         val routes = keg.routes()
 
       assert(app.routes.length == 1)
-      val selector = app.routes.head.asInstanceOf[keg.Endpoint].selector.asInstanceOf[keg.EndpointSelector.Simple]
-      assert(selector.path == "/hello/:name/:suffix/*")
-      assert(selector.methods == Seq("GET"))
+      val ep = app.routes.head.asInstanceOf[keg.Endpoint]
+      assert(ep.path == "/hello/:name/:suffix/*")
+      assert(ep.methods == Seq("GET"))
 
       val response = app.routes.head.asInstanceOf[keg.Endpoint].invoke(
         keg.Request(
@@ -40,7 +40,7 @@ object DerivationTest extends TestSuite:
         )
       )
       val bytes = java.io.ByteArrayOutputStream()
-      response.asInstanceOf[keg.EndpointResult.Success].response.asInstanceOf[keg.Response[keg.Data]].data.write(bytes)
+      response.asInstanceOf[keg.Response[keg.Data]].data.write(bytes)
       assert(new String(bytes.toByteArray, "UTF-8") == "Hello, Alice€! Suffix is: 42, remaining path: some/extra/path")
 
     test("FromPath not found"):
@@ -84,7 +84,7 @@ object DerivationTest extends TestSuite:
 
     test("websocket derivation"):
       object app:
-        @keg.websocket("/ws/:user")
+        @keg.get("/ws/:user")
         def socket(user: String): keg.WsResponse =
           keg.WsResponse:
             channel =>
@@ -94,27 +94,14 @@ object DerivationTest extends TestSuite:
         val routes = keg.routes()
 
       assert(app.routes.length == 1)
-      assert(app.routes.head.asInstanceOf[keg.Endpoint].selector.isInstanceOf[keg.model.EndpointSelector.WebSocketUpgrade])
 
     test("error annotations"):
       object app:
-        @keg.notFound()
-        def notFoundHandler(): keg.Response[keg.Data] =
-          keg.Response("Not Found", 404)
-
-        @keg.methodNotAllowed()
-        def methodNotAllowedHandler(): keg.Response[keg.Data] =
-          keg.Response("Method Not Allowed", 405)
+        @keg.error()
+        def recovery(): keg.Response[keg.Data] =
+          keg.Response("fail", 500)
 
         val routes = keg.routes()
 
-      assert(app.routes.length == 2)
-      val selectors = app.routes.map(_.asInstanceOf[keg.Endpoint].selector)
-      assert(selectors.exists {
-        case keg.model.EndpointSelector.NotFound => true
-        case _ => false
-      })
-      assert(selectors.exists {
-        case keg.model.EndpointSelector.MethodNotAllowed => true
-        case _ => false
-      })
+      assert(app.routes.length == 1)
+      assert(app.routes.head.isInstanceOf[keg.Recovery])

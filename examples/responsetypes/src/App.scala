@@ -151,7 +151,6 @@ x is 5
 $ curl "http://localhost:8080/check/-1" -i
 HTTP/1.1 400 Bad Request
 ...
-x must be non-negative
 */
 
 val routes = keg.routes()

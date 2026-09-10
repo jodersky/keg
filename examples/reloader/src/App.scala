@@ -19,16 +19,12 @@ def index() =
 
 val endpoints = Seq(
   keg.Endpoint(
-    selector = keg.EndpointSelector.Simple("/", Seq("GET")),
-    invoke = _ =>
-      keg.model.EndpointResult.Success(
-        keg.Response(index(), 200)
-      ),
-    meta = keg.model.EndpointMeta()
+    path = "/",
+    invoke = _ => keg.Response(index(), 200)
   )
 )
 
-// reloading only works in debug mode, and when an `<html>` tag is detected in
+// reloading only works in debug mode, and when an `<!DOCTYPE html>` tag is detected in
 // the response
 val server = keg.Server(endpoints, debugMode = true)
 

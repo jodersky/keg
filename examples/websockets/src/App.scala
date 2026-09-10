@@ -3,7 +3,7 @@ package app
 // Websocket support is more-or-less copied directly from cask.
 
 //snippet:start
-@keg.websocket("/hello/:x")
+@keg.get("/hello/:x")
 def hello(x: String): keg.FinalResponse =
   if x != "secret" then
     // you can also return a normal HTTP response in a websocket handler if you

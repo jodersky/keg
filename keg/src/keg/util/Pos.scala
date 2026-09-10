@@ -19,7 +19,7 @@ object Pos:
 
     '{
       Pos(
-        file = ${ Expr(Position.ofMacroExpansion.sourceFile.getJPath.map(_.getFileName.toString()).getOrElse("<unknown>")) },
+        file = ${ Expr(Position.ofMacroExpansion.sourceFile.path) },
         line = ${ Expr(Position.ofMacroExpansion.startLine + 1) },
         column = ${ Expr(Position.ofMacroExpansion.startColumn + 1) },
         function = ${ Expr(Symbol.spliceOwner.owner.fullName) }

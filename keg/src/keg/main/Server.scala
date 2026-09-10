@@ -7,13 +7,16 @@ import keg.model.Data
 import keg.model.Endpoint
 import keg.model.Recovery
 import keg.model.EndpointMeta
-import keg.model.EndpointSelector
 import keg.model.WsResponse
-import keg.model.EndpointResult
 import keg.model.Recovery
 import keg.main.DispatchTrie.DispatchLookup
 import keg.util.Util
 import java.util.concurrent.TimeoutException
+
+case class AbortException(val code: Int, val message: String) extends Exception(message)
+
+def abort(code: Int, message: String = ""): Nothing =
+  throw new AbortException(code, message)
 
 /** A simple HTTP server using Undertow.
   *
@@ -65,65 +68,24 @@ case class Server(
       scribe.warn("No secrets provided for server, using random secret. This means that sessions and flash will not be valid across server restarts, and any existing cookies will be invalidated!")
       Seq(Secret.check(Secret.random()))
 
-  private val dispatchTrie = DispatchTrie[Endpoint]()
-  private val websocketDispatchTrie = DispatchTrie[Endpoint]()
-
-  private var notFoundEndpoint: Endpoint = Server.defaultNotFoundEndpoint
-  private var methodNotAllowedEndpoint: Endpoint = Server.defaultMethodNotAllowedEndpoint
-
+  private val dispatch = EndpointDispatch()
   private var recovery: Recovery = Server.defaultRecovery(debugMode)
+  private var recoverySet: Boolean = false
 
   private val activeInterceptors =
     if debugMode then interceptors ++ debugInterceptors
     else interceptors
 
-  private def addToTrie(
-    trie: DispatchTrie[Endpoint],
-    path: String,
-    methods: Seq[String],
-    endpoint: Endpoint
-  ): Unit =
-    val segs = Util.splitPath(path)
-
-    for method <- methods do
-      trie.add(segs, method, endpoint) match
-        case DispatchTrie.AddResult.Ok => ()
-        case DispatchTrie.AddResult.MethodConflict(path, items) =>
-          throw new Exception(
-            s"Method conflict when adding endpoint ${endpoint.meta} $methods $path: existing endpoints ${items.map { case (method, ep) => s"$method -> ${ep.meta}" }.mkString(", ")}"
-          )
-        case DispatchTrie.AddResult.SubpathConflict(path, items) =>
-          throw new Exception(
-            s"Subpath conflict when adding endpoint ${endpoint.meta} $methods $path: existing endpoints: ${items.values.map(_.meta).mkString(", ")}"
-          )
-
   for endpoint <- activeInterceptors.flatMap(_.endpoints) ++ endpoints do
     endpoint match
       case r: Recovery =>
-        if debugMode then
-          scribe.warn(s"Ignoring recovery handler because debugMode is enabled")
+        if recoverySet then
+          throw new Exception("Duplicate recovery")
         else
           recovery = r
+          recoverySet = true
       case ep: Endpoint =>
-        ep.selector match
-          case EndpointSelector.Simple(path, methods) =>
-            addToTrie(dispatchTrie, path, methods, ep)
-          case EndpointSelector.WebSocketUpgrade(path) =>
-            addToTrie(websocketDispatchTrie, path, Seq("GET"), ep)
-          case EndpointSelector.NotFound =>
-            if notFoundEndpoint ne Server.defaultNotFoundEndpoint then
-              throw new Exception(
-                s"Multiple NotFound endpoints defined: ${notFoundEndpoint.meta} and ${ep.meta}"
-              )
-            else
-              notFoundEndpoint = ep
-          case EndpointSelector.MethodNotAllowed =>
-            if methodNotAllowedEndpoint ne Server.defaultMethodNotAllowedEndpoint then
-              throw new Exception(
-                s"Multiple MethodNotAllowed endpoints defined: ${methodNotAllowedEndpoint.meta} and ${ep.meta}"
-              )
-            else
-              methodNotAllowedEndpoint = ep
+        dispatch.add(ep)
   end for
 
   private val interceptorFn =
@@ -131,13 +93,13 @@ case class Server(
 
   // invokes the endpoint and recovery if needed
   private def invoke(ep: Endpoint, req: Request): FinalResponse =
-    if WebAppUtil.checkCsrf(req.method, req.headers, csrfAllowedOrigins) then
-      ep.invoke(req) match
-        case EndpointResult.Success(response) =>
-          response
-        case failure: EndpointResult.Failure => recovery.invoke(req, ep, failure)
-    else
-      recovery.invoke(req, ep, EndpointResult.Failure.MethodAbort(403, "CSRF validation failed"))
+    try
+      if !WebAppUtil.checkCsrf(req.method, req.headers, csrfAllowedOrigins) then
+        throw AbortException(403, "CSRF validation failed")
+      ep.invoke(req)
+    catch
+      case scala.util.control.NonFatal(e) =>
+        recovery.invoke(req, e, Some(ep))
 
   private val handlerFunc: Request => FinalResponse = (req0: Request) =>
     scribe.debug(s"Received request: ${req0.method} ${req0.path}")
@@ -153,27 +115,22 @@ case class Server(
 
     val decodedPathSegments = Util.splitPath(req0.path)
 
-    val lookupResult = if req0.headers.get("upgrade").contains("websocket") then
-      websocketDispatchTrie.lookup(decodedPathSegments)
-    else
-      dispatchTrie.lookup(decodedPathSegments)
+    val lookupResult = dispatch.lookup(decodedPathSegments, req0.method)
 
-    val req = req0.copy(
-      pathParams = lookupResult.bindings,
-      remainingPathSegments = lookupResult.remainingPathSegments,
-      session = sessionData,
-      flash = flashData
-    )
-
-    val response0 =
-      if lookupResult.items.isEmpty then
-        interceptorFn(req, notFoundEndpoint, invoke(notFoundEndpoint, _))
-      else
-        lookupResult.items.get(req0.method) match
-          case Some(endpoint) =>
-            interceptorFn(req, endpoint, invoke(endpoint, _))
-          case None =>
-            interceptorFn(req, notFoundEndpoint, invoke(methodNotAllowedEndpoint, _))
+    val response0 = lookupResult match
+      case None => recovery.invoke(
+        req0.copy(session = sessionData, flash = flashData),
+        new AbortException(404, "endpoint not found"),
+        None
+      )
+      case Some(result) =>
+        val req = req0.copy(
+          pathParams = result.bindings,
+          remainingPathSegments = result.remainingPathSegments,
+          session = sessionData,
+          flash = flashData
+        )
+        interceptorFn(req, result.ep, invoke(result.ep, _))
 
     val response = response0 match
       case simple: keg.model.Response[keg.model.Data] =>
@@ -193,7 +150,7 @@ case class Server(
               sameSite = "Lax",
               maxAge = sessionMaxAgeSeconds
             )
-          else if req.cookies.contains("_session") then
+          else if req0.cookies.contains("_session") then
             extraCookies += keg.model.Cookie(
               name = "_session",
               value = "",
@@ -215,7 +172,7 @@ case class Server(
               sameSite = "Lax",
               maxAge = flashMaxAgeSeconds
             )
-          else if req.cookies.contains("_flash") then
+          else if req0.cookies.contains("_flash") then
             extraCookies += keg.model.Cookie(
               name = "_flash",
               value = "",
@@ -270,35 +227,22 @@ object Server:
 
   def debugFromEnv = sys.env.isDefinedAt("KEG_DEBUG") || sys.env.isDefinedAt("DEBUG")
 
-  val defaultNotFoundEndpoint: Endpoint =
-    Endpoint(EndpointSelector.NotFound, req => EndpointResult.Failure.MethodAbort(404, "Not Found"), EndpointMeta())
-  val defaultMethodNotAllowedEndpoint: Endpoint =
-    Endpoint(EndpointSelector.MethodNotAllowed, req => EndpointResult.Failure.MethodAbort(405, "Method Not Allowed"), EndpointMeta())
-
   def defaultRecovery(debugMode: Boolean): Recovery =
     // in debug mode, we also display the error to the user, in non-debug mode
     // we just log it and return a generic message
-    if debugMode then
-      val fn = (req: Request, ep: Endpoint, failure: EndpointResult.Failure) =>
-        failure match
-          case EndpointResult.Failure.ParamAbort(param, code, message) =>
-            scribe.warn(s"Error in endpoint ${ep.meta} for request ${req.method} ${req.path}: Parameter '$param' is invalid: $message")
-            Response[keg.model.Data](s"Parameter '$param' is invalid: $message", code)
-          case EndpointResult.Failure.MethodAbort(code, message) =>
-            scribe.warn(s"Error in endpoint ${ep.meta} for request ${req.method} ${req.path}: $message")
-            Response[keg.model.Data](message, code)
-          case EndpointResult.Failure.Exception(throwable) =>
-            scribe.error(s"Error in endpoint ${ep.meta} for request ${req.method} ${req.path}", throwable)
-            Response[keg.model.Data]("Internal Server Error " + throwable.getMessage, 500)
-      Recovery(fn)
-    else
-      val fn = (req: Request, ep: Endpoint, failure: EndpointResult.Failure) =>
-        failure match
-          case EndpointResult.Failure.ParamAbort(_, code, _) =>
-            Response[keg.model.Data]("Bad Request", code)
-          case EndpointResult.Failure.MethodAbort(code, message) =>
-            Response[keg.model.Data](message, code)
-          case EndpointResult.Failure.Exception(throwable) =>
-            scribe.error(s"Error in endpoint ${ep.meta} for request ${req.method} ${req.path}", throwable)
-            Response[keg.model.Data]("Internal Server Error", 500)
-      Recovery(fn)
+    Recovery(
+      (req, err, ep) => err match
+        case AbortException(code, message) =>
+          if debugMode then
+            Response(message, code)
+          else
+            Response(
+              keg.transport.uhttp.UhttpTransport.StandardReasonPhrases.getOrElse(code, "unknown"),
+              code
+            )
+        case _ =>
+          if debugMode then
+            Response(err.toString, 500)
+          else
+            Response("Internal server error", 500)
+    )

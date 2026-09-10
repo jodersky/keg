@@ -41,11 +41,11 @@ def authorizationCodeFlow(
   println(codeChallenge)
   println(codeVerifier)
 
-  val ok = keg.EndpointResult.Success(keg.Response("You may close this window.", 200))
-  val failure = keg.EndpointResult.Success(keg.Response("You may close this window.", 200))
+  val ok = keg.Response("You may close this window.", 200)
+  val failure = keg.Response("You may close this window.", 200)
 
   val ep = keg.model.Endpoint(
-    selector = keg.model.EndpointSelector.Simple(callback, Seq("GET")),
+    callback, Seq("GET"),
     invoke = req =>
       try
         if req.params.contains("error") then

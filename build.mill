@@ -4,7 +4,7 @@
 import mill.*, scalalib.*, scalanativelib.*, scalafmt.*, publish.*
 import build.thirdparty
 
-val scala3 = "3.8.4"
+val scala3 = "3.9.0"
 val scalaNative = "0.5.12"
 
 trait KegMultiModule extends ScalaModule with PublishModule:

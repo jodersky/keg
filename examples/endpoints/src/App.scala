@@ -9,44 +9,41 @@ package app
 //
 // If you want more control, you can skip the annotations and write the
 // underlying data structures directly. This is more verbose, but can be useful
-// for advanced use cases, such as building endpoints programmatically.
+// for quickly writing a simple server or advanced use cases, such as building
+// endpoints programmatically.
 
 //snippet:start
-val endpoints = Seq(
+val routes = Seq(
   keg.Endpoint(
-    selector = keg.EndpointSelector.Simple("/", Seq("GET")),
+    path = "/",
+    methods = Seq("GET"),
     invoke = _ =>
-      keg.model.EndpointResult.Success(
-        keg.Response("Hello, World!", 200)
-      )
+      keg.Response("Hello, World!", 200)
   ),
   keg.Endpoint(
-    selector = keg.EndpointSelector.Simple("/echo", Seq("POST")),
+    path = "/echo",
+    methods = Seq("POST"),
     invoke = req =>
       val body = new String(req.body().readAllBytes(), "UTF-8")
-      keg.model.EndpointResult.Success(
-        keg.Response(s"Echo: $body", 200)
-      )
+      keg.Response(s"Echo: $body", 200)
   ),
   keg.Endpoint(
-    selector = keg.EndpointSelector.Simple("/fail", Seq("GET")),
+    path = "/fail",
     invoke = _ =>
-      keg.model.EndpointResult.Failure.MethodAbort(418, "I'm a teapot")
+      keg.abort(418, "I'm a teapot")
   ),
   keg.Endpoint(
-    selector = keg.EndpointSelector.NotFound,
+    path = "/*",
     invoke = (req) =>
-      keg.model.EndpointResult.Success(
-        keg.Response("Custom 404 Not Found", 404)
-      )
+      keg.Response("Custom 404 Not Found", 404)
   ),
-  keg.model.Recovery(
-    invoke = (req, ep, err) =>
+  keg.Recovery(
+    invoke = (req, err, ep) =>
       keg.Response(s"Custom error page: ${err}", 500)
   )
 )
 
-val server = keg.Server(endpoints)
+val server = keg.Server(routes)
 //snippet:end
 
 @main

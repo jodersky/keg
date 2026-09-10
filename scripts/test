@@ -10,4 +10,9 @@ set -o errexit
 # pre-build them in parallel to speed up the overall test process
 ./mill examples.__.assembly
 ./mill examples.__.nativeLink
+
+# usage examples
 ./mill -j 1 examples.__.test
+
+# some examples have actual tests (not just usage ones based on curl)
+./mill examples.__.testForked

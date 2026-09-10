@@ -569,7 +569,6 @@ x is 5
 $ curl "http://localhost:8080/check/-1" -i
 HTTP/1.1 400 Bad Request
 ...
-x must be non-negative
 ```
 
 
@@ -727,86 +726,42 @@ def main2() =
 ### Error handling
 
 
-Error handling in keg is also done through annotated methods. These methods
-will be called when the corresponding error occurs, and can be used to return
-custom error messages or pages.
+Error handling is also done with annotations. A method annotated with
+`@keg.error()` will be called whenever an exception is thrown while
+processing a request. Such as method is known as the *recovery*.
 
-Annotating a method with `@keg.notFound` will cause it to be called whenever
-a request is made to a path that doesn't match any of the defined endpoints.
-You can access the request and other parameters just like with regular
-endpoint annotations.
+A recovery may only take arguments of the following types:
+- `keg.Request`: the request that caused the error
+- `Option[keg.Endpoint]`: the endpoint that generated the error, if the error
+  originated in an endpoint
+- `Throwable`: the exception that was thrown
 
-```scala
-@keg.notFound()
-def notFound(req: keg.Request) =
-  keg.Response(
-    s"custom not found: ${req.path}\n",
-    404
-  )
-```
+By convention, `keg.AbortException` is thrown by endpoints when the error
+represents something that has a status code. The message is intended for
+debugging, and shouldn't be shown to the user.
 
-```
-$ curl "http://localhost:8080/doesnotexist"
-custom not found: /doesnotexist
-```
+A recovery itself should not throw! Any exceptions from a recovery will
+bubble up to the HTTP transport, which may simply terminate the HTTP
+connection or produce non-overridable error messages of its own.
 
-Similarly, there's a `@keg.methodNotAllowed` annotation for handling requests
-that match a path but not the method of any defined endpoint.
-
-```scala
-@keg.methodNotAllowed()
-def methodNotAllowed(req: keg.Request) =
-  keg.Response(
-    s"custom method not allowed: ${req.path}\n",
-    405
-  )
-
-@keg.get("/foo")
-def foo() = "bar"
-```
-
-```
-$ curl "http://localhost:8080/foo" -X POST
-custom method not allowed: /foo
-```
-
-Finally, there's `@keg.error()` for handling actual errors that occur while
-processing a request.
-
-This annotation is a bit special, in that it does not accept arbitrary
-arguments, but may only take arguments of the following types:
-- `keg.Request` (the request that caused the error)
-- `keg.Endpoint` (the endpoint that generated the error)
-- `keg.EndpointResult.Failure` (the type of error that occurred)
-
-The `keg.EndpointResult.Failure` has three subtypes:
-- `keg.EndpointResult.ParamAbort(param, code, message)` Something went wrong
-  in the `FromRequest` instance for one of the endpoint's parameters. The
-  failure includes a suggested HTTP status code and error message.
-- `keg.EndpointResult.MethodAbort(code, message)` The endpoint rejected the
-  request with a specific status code and message.
-- `keg.EndpointResult.Exception(ex)` An exception was thrown while processing
-  the request
 
 ```scala
 @keg.error()
 def errorHandler(
   req: keg.Request,
-  ep: keg.Endpoint,
-  failure: keg.EndpointResult.Failure
-): keg.Response[keg.Data] =
-  failure match
-    case keg.EndpointResult.Failure.ParamAbort(param, code, message) =>
+  ep: Option[keg.Endpoint],
+  ex: Throwable
+): keg.FinalResponse =
+  // In this example we include the messages in the response. In a real app,
+  // you'd usually hide the message, or use an application-specific exception
+  // type when you actually want to include the message in the response body.
+  ex match
+    case keg.AbortException(code, message) =>
       keg.Response(
-        s"something went wrong when reading parameter ${param}: ${message}\n",
+        s"the endpoint ${ep.map(_.path).getOrElse("none")} rejected the request: ${message}\n",
         code
       )
-    case keg.EndpointResult.Failure.MethodAbort(code, message) =>
-      keg.Response(
-        s"the endpoint ${ep.selector} rejected the request: ${message}\n",
-        code
-      )
-    case keg.EndpointResult.Failure.Exception(ex) =>
+    case _ =>
       keg.Response(
         s"an exception was thrown while processing the request: ${ex.getMessage}\n",
         500
@@ -832,10 +787,20 @@ an exception was thrown while processing the request: something went wrong
 $ curl "http://localhost:8080/reject" -i
 HTTP/1.1 400 Bad Request
 ...
-the endpoint Simple(/reject,List(GET)) rejected the request: request rejected by endpoint
+the endpoint /reject rejected the request: request rejected by endpoint
 ```
 
 
+By default, a request to a non-existing endpoint will throw a 404 abort
+exception. While you *can* define a recovery which catches a 404, you could
+also have a fallback endpoint:
+nippedt:start
+nippet:end
+
+```
+$ curl "http://localhost:8080/doesnotexist"
+custom not found: /doesnotexist
+```
 
 
 
@@ -846,7 +811,7 @@ Websocket support is more-or-less copied directly from cask.
 
 
 ```scala
-@keg.websocket("/hello/:x")
+@keg.get("/hello/:x")
 def hello(x: String): keg.FinalResponse =
   if x != "secret" then
     // you can also return a normal HTTP response in a websocket handler if you
@@ -1089,45 +1054,42 @@ generates the underlying data structures for you.
 
 If you want more control, you can skip the annotations and write the
 underlying data structures directly. This is more verbose, but can be useful
-for advanced use cases, such as building endpoints programmatically.
+for quickly writing a simple server or advanced use cases, such as building
+endpoints programmatically.
 
 
 ```scala
-val endpoints = Seq(
+val routes = Seq(
   keg.Endpoint(
-    selector = keg.EndpointSelector.Simple("/", Seq("GET")),
+    path = "/",
+    methods = Seq("GET"),
     invoke = _ =>
-      keg.model.EndpointResult.Success(
-        keg.Response("Hello, World!", 200)
-      )
+      keg.Response("Hello, World!", 200)
   ),
   keg.Endpoint(
-    selector = keg.EndpointSelector.Simple("/echo", Seq("POST")),
+    path = "/echo",
+    methods = Seq("POST"),
     invoke = req =>
       val body = new String(req.body().readAllBytes(), "UTF-8")
-      keg.model.EndpointResult.Success(
-        keg.Response(s"Echo: $body", 200)
-      )
+      keg.Response(s"Echo: $body", 200)
   ),
   keg.Endpoint(
-    selector = keg.EndpointSelector.Simple("/fail", Seq("GET")),
+    path = "/fail",
     invoke = _ =>
-      keg.model.EndpointResult.Failure.MethodAbort(418, "I'm a teapot")
+      keg.abort(418, "I'm a teapot")
   ),
   keg.Endpoint(
-    selector = keg.EndpointSelector.NotFound,
+    path = "/*",
     invoke = (req) =>
-      keg.model.EndpointResult.Success(
-        keg.Response("Custom 404 Not Found", 404)
-      )
+      keg.Response("Custom 404 Not Found", 404)
   ),
-  keg.model.Recovery(
-    invoke = (req, ep, err) =>
+  keg.Recovery(
+    invoke = (req, err, ep) =>
       keg.Response(s"Custom error page: ${err}", 500)
   )
 )
 
-val server = keg.Server(endpoints)
+val server = keg.Server(routes)
 ```
 
 

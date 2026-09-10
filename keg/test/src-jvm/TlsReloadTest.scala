@@ -67,8 +67,8 @@ object TlsReloadTest extends TestSuite:
       val server = keg.Server(
         endpoints = Seq(
           keg.Endpoint(
-            selector = keg.EndpointSelector.Simple("/ping", Seq("GET")),
-            invoke = _ => keg.EndpointResult.Success(keg.Response("pong"))
+            "/ping", Seq("GET"),
+            invoke = _ => keg.Response("pong")
           )
         ),
         listeners = Seq(keg.Listener.Https("::1", 0, key = liveKey.toNIO, cert = liveCert.toNIO, clientCa = None)),
