@@ -1,4 +1,4 @@
-package keg.extras
+package keg.contrib
 
 import keg.main.Interceptor
 import keg.model.{Endpoint, Request, Response, RawResponse, WsResponse}

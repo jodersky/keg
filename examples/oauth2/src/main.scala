@@ -281,7 +281,7 @@ def serve(
     listeners = Seq(listener),
     secrets = config.server.secrets,
     interceptors = Seq(
-      keg.extras.TimingInterceptor(),
+      keg.contrib.TimingInterceptor(),
     )
   )
 

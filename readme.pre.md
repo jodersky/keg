@@ -247,8 +247,8 @@ generic response is confined to the derivation layer
 
 ### RFCs
 
-Check out docs/rfcs/ for some RFC-style documents. These range from information
-to suggesting new designs.
+Check out docs/rfcs/ for some RFC-style documents. These range from
+informational to suggesting new designs.
 
 ## Acknowledgements
 

@@ -15,7 +15,7 @@ object `package` extends build.ExampleModule:
   )
 
   def moduleDeps = super.moduleDeps ++ Seq(
-    build.keg.extras
+    build.keg.contrib
   )
 
   def forkArgs = Seq(

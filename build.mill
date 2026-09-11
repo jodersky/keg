@@ -1,4 +1,4 @@
-//| mill-version: 1.1.7
+//| mill-version: 1.1.9
 //| mvnDeps: ["com.lihaoyi::mill-contrib-jmh:$MILL_VERSION"]
 
 import mill.*, scalalib.*, scalanativelib.*, scalafmt.*, publish.*
@@ -7,33 +7,36 @@ import build.thirdparty
 val scala3 = "3.9.0"
 val scalaNative = "0.5.12"
 
-trait KegMultiModule extends ScalaModule with PublishModule:
-  def scalaVersion = scala3
-  def scalacOptions = Seq("-deprecation", "-feature", "-unchecked", "-encoding", "utf8", "-preview")
-  def moduleDir = super.moduleDir / os.up
-  def sources = Task.Sources(
-    moduleDir / "src",
-    moduleDir / "src-jvm",
+trait Publish extends PublishModule:
+  def publishVersion = "0.1.0-SNAPSHOT"
+  def pomSettings = PomSettings(
+    description = "A small web framework",
+    organization = "io.crashbox",
+    url = "https://github.com/jodersky/keg",
+    licenses = Seq(License.`BSD-3-Clause`),
+    versionControl = VersionControl.github("jodersky", "keg"),
+    developers = Seq(
+      Developer("jodersky", "Jakob Odersky", "https://github.com/jodersky")
+    )
   )
   def artifactName = Task:
     val base = super.artifactName()
     base.replaceAll("-jvm$", "").replaceAll("-native$", "")
 
-  def publishVersion = "0.1.0-SNAPSHOT"
-  def pomSettings = PomSettings(
-    description = artifactName(),
-    organization = "io.crashbox",
-    url = "https://github.com/jodersky/keg",
-    licenses = Seq(License.MIT),
-    versionControl = VersionControl.github("jodersky", "keg"),
-    developers = Seq(Developer("jodersky", "Jakob Odersky", "https://github.com/jodersky"))
+trait KegModule extends ScalaModule with Publish:
+  def scalaVersion = scala3
+  def scalacOptions = Seq("-deprecation", "-feature", "-unchecked", "-encoding", "utf8")
+  def moduleDir = super.moduleDir / os.up
+  def sources = Task.Sources(
+    moduleDir / "src",
+    moduleDir / "src-jvm",
   )
 
 trait KegTestModule extends TestModule:
   def testFramework = "utest.runner.Framework"
   def mvnDeps = Seq(thirdparty.utest)
 
-trait KegMultiNativeModule extends KegMultiModule with ScalaNativeModule:
+trait KegNativeModule extends KegModule with ScalaNativeModule:
   def scalaNativeVersion = scalaNative
   def sources = Task.Sources(
     moduleDir / "src",
@@ -48,7 +51,7 @@ object keg extends Module:
     thirdparty.scribe
   )
 
-  object jvm extends KegMultiModule:
+  object jvm extends KegModule:
     def moduleDeps = Seq(keg.forms.jvm)
     def mvnDeps = commonDeps ++ Seq(
       // thirdparty.slf4jSimple,
@@ -64,7 +67,7 @@ object keg extends Module:
         moduleDir / "src",
         moduleDir / "src-jvm",
       )
-  object native extends KegMultiNativeModule:
+  object native extends KegNativeModule:
     def moduleDeps = Seq(keg.forms.native)
     def mvnDeps = commonDeps ++ Seq(
       thirdparty.nativeCrypto,
@@ -93,14 +96,13 @@ object keg extends Module:
       )
 
   object forms extends Module:
-    object jvm extends KegMultiModule:
+    object jvm extends KegModule:
       object test extends ScalaTests with KegTestModule
-    object native extends KegMultiNativeModule:
+    object native extends KegNativeModule:
       object test extends ScalaNativeTests with KegTestModule
 
-  object extras extends ScalaModule:
+  object contrib extends ScalaModule with Publish:
     def scalaVersion = scala3
-
     def moduleDeps = Seq(keg.jvm)
     def mvnDeps = Seq(
       thirdparty.ustats,
@@ -109,9 +111,9 @@ object keg extends Module:
 
 object sandbox extends ScalaModule:
   def scalaVersion = scala3
-  def moduleDeps = Seq(keg.jvm, keg.extras)
+  def moduleDeps = Seq(keg.jvm, keg.contrib)
 
-  def scalacOptions = Seq("-Xprint:postInlining", "-feature", "-preview")
+  def scalacOptions = Seq("-Xprint:postInlining", "-feature")
 
   def mvnDeps = Seq(thirdparty.scalatags)
 
