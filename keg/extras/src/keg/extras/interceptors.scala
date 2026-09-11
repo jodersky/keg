@@ -1,15 +1,15 @@
 package keg.extras
 
 import keg.main.Interceptor
-import keg.model.{Endpoint, Request, Response, FinalResponse, WsResponse}
+import keg.model.{Endpoint, Request, Response, RawResponse, WsResponse}
 
 class LoggingInterceptor extends Interceptor:
 
   override def intercept(
     request: Request,
     endpoint: Endpoint,
-    next: Request => FinalResponse
-  ): FinalResponse =
+    next: Request => RawResponse
+  ): RawResponse =
     scribe.info(s"Incoming request: ${request.method} ${request.path}")
     val response = next(request)
     response match
@@ -35,7 +35,7 @@ class TimingInterceptor extends Interceptor:
       for method <- ep.methods do
         histogram(method, ep.path, "200")
 
-  def intercept(request: Request, endpoint: Endpoint, next: Request => FinalResponse): FinalResponse =
+  def intercept(request: Request, endpoint: Endpoint, next: Request => RawResponse): RawResponse =
     val startTime = System.nanoTime()
     val response = next(request)
     val endTime = System.nanoTime()
@@ -92,7 +92,7 @@ case class RateLimiter(
     .expireAfterAccess(java.time.Duration.of(reqsPer, unitOfTime))
     .build[String, TokenBucket]()
 
-  override def intercept(request: Request, endpoint: Endpoint, next: Request => FinalResponse): FinalResponse =
+  override def intercept(request: Request, endpoint: Endpoint, next: Request => RawResponse): RawResponse =
     val clientId = request.remoteIp.getHostAddress()
     val bucket = cache.get(clientId, _ => new TokenBucket(reqsPer, 0L))
     if bucket.tryConsume() then

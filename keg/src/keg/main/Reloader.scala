@@ -4,7 +4,7 @@ import keg.model.Endpoint
 
 import keg.model.Request
 
-import keg.model.FinalResponse
+import keg.model.RawResponse
 
 object Reloader extends Interceptor:
 
@@ -52,7 +52,7 @@ object Reloader extends Interceptor:
 
   // val script = new String(this.getClass().getResourceAsStream("/reload.js").readAllBytes(), "UTF-8")
 
-  def intercept(request: Request, endpoint: Endpoint, next: Request => FinalResponse): FinalResponse =
+  def intercept(request: Request, endpoint: Endpoint, next: Request => RawResponse): RawResponse =
     val response = next(request)
     response match
       case r: keg.model.Response[keg.model.Data] => inject(r)

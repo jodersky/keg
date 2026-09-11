@@ -3,7 +3,6 @@ package keg.derivation
 import keg.model.Request
 import keg.model.Response
 import keg.model.WsResponse
-import keg.model.FinalResponse
 import keg.model.RawResponse
 import keg.model.Data
 import java.io.InputStream
@@ -22,7 +21,7 @@ import java.io.InputStream
 // def foo(ex: Exception) = ???
 
 // enum EpRes:
-//   case Success(response: FinalResponse)
+//   case Success(response: RawResponse)
 
 //   // invoking the endpoint produced an exception, which should be handled
 //   case Exception(ex: Throwable)
@@ -35,22 +34,22 @@ import java.io.InputStream
 
 // enum Ep:
 //   /** An endpoint representing a simple HTTP route, selected by its path and methods. */
-//   case Simple(path: String, methods: Seq[String], invoke: (Request) => FinalResponse)
+//   case Simple(path: String, methods: Seq[String], invoke: (Request) => RawResponse)
 
 //   /** An endpoint representing an upgrade to a WebSocket connection. */
-//   case Websocket(path: String, invoke: (Request) => FinalResponse)
+//   case Websocket(path: String, invoke: (Request) => RawResponse)
 
 //   /** An endpoint representing an error handler for a specific HTTP status code. */
-//   case Aborted(invoke: (Request, Int, String) => FinalResponse)
+//   case Aborted(invoke: (Request, Int, String) => RawResponse)
 
 //   /** Endpoint called if no other endpoint matches the request. */
-//   case NotFound(invoke: Request => FinalResponse)
+//   case NotFound(invoke: Request => RawResponse)
 
 //   /** Endpoint called if the request method is not allowed. */
-//   case MethodNotAllowed(invoke: Request => FinalResponse)
+//   case MethodNotAllowed(invoke: Request => RawResponse)
 
 //   /** Endpoint called if an error occurs while processing the request. */
-//   case Error(handler: (Request, Exception) => FinalResponse)
+//   case Error(handler: (Request, Exception) => RawResponse)
 
 /** */
 enum Result[+A]:
@@ -62,7 +61,7 @@ enum Result[+A]:
   case Abort(code: Int, message: String)
 
   /** Respond immediately with the given response. */
-  case Respond(response: FinalResponse)
+  case Respond(response: RawResponse)
 
   def map[B](f: A => B): Result[B] = this match
     case Continue(value) => Continue(f(value))
@@ -134,7 +133,7 @@ trait BaseApi:
 
   /** Type class for converting values to a response. */
   trait ToResponse[-A]:
-    def toResponse(value: A, ctx: Context): keg.model.FinalResponse
+    def toResponse(value: A, ctx: Context): keg.model.RawResponse
 
 
   /** An annotation for marking endpoint methods.
@@ -292,8 +291,8 @@ trait StandardFroms extends BaseApi:
   given wsToResponse: ToResponse[WsResponse] with
     def toResponse(ws: WsResponse, ctx: Context) = ws
 
-  given finalResponseToResponse: ToResponse[keg.model.FinalResponse] with
-    def toResponse(response: keg.model.FinalResponse, ctx: Context): FinalResponse = response
+  given RawResponseToResponse: ToResponse[keg.model.RawResponse] with
+    def toResponse(response: keg.model.RawResponse, ctx: Context): RawResponse = response
 
 trait ExtraFroms extends StandardFroms:
 
@@ -406,7 +405,7 @@ trait Api extends StandardFroms with ExtraFroms:
 //       Result.Respond(Response(403, data = "Forbidden"))
 
 // class get(path: String, authz: (String, String)) extends EndpointAnnotation:
-//   def wrap(req: Request, next: (Context, Request) => keg.model.FinalResponse): keg.model.FinalResponse =
+//   def wrap(req: Request, next: (Context, Request) => keg.model.RawResponse): keg.model.RawResponse =
 //     val user = authenticate(req) // get user from request (e.g., from a token)
 //     val authzInfo = authorize(req, authz, user)
 

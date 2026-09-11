@@ -1,9 +1,27 @@
+# RFC 1 - Differences with cask
 
-## Differences with cask
+Given the name "Keg" is a nod to "Cask", there is no surprise that it resembles
+the latter. Keg started out as a heavily customized version of cask, which I
+used internally for some services, and ended up ripping out. What you see here
+is essentially that, cleaned up a little.
 
-Initially I wanted to augment cask with the following features.
+This repository serves to showcase some ideas of keg. It may be possible to
+upstream changes back into cask (although it would change many core cask APIs).
 
-Major changes:
+The original cask customizations were the following:
+
+- Keg's focus is around extensible request-scoped state (e.g. adding the logged
+  in user to a request, or checking authorization).
+
+- Defining cask decorators as member types of a configuration trait and making
+  input parsing path-dependent. This gave me an easy way to define typeclasses
+  for various parameter types.
+
+- A server available under scalanative
+
+These changes then led to a more (see below).
+
+## Major changes
 
 - Completely rework endpoint decorators; don't use custom ones
 
@@ -28,12 +46,12 @@ Major changes:
   custom decorators to configure parsing, there is only one decorator `request`
   (as well as convenience decorators which just select a specific HTTP method
   `get`, `put`, `post`, `delete` etc), and all parsing logic happens using
-  regular type classes. To ease lookup of said typeclasses without custom
+  regular type classes. To ease lookup of said typeclasses without needing
   imports, keg uses "configuration trait" pattern: the `request` decorator is
   part of a trait.
 
   I realize that this only shifts the problem around, but in my experience the
-  main gain is the lack of all the higher-kinded stuff like `InputParser[T]`
+  main gain is the lack of all the higher-kinded stuff like `InputParser[T]`.
 
 - Change macros and decorators to differentiate between path parameters and
   parameters inferred from requests.
@@ -61,7 +79,7 @@ Major changes:
 
   In cask, decorators always set parameters by-name (the next decorator's
   `Delegate` type accepts a `Map[String, Any]`). The way to use by type
-  parameters is to implement a custom `InputParser`.
+  parameters is to implement an `InputParser`.
 
   This approach makes cask very flexible, and in particular allows associating
   meaning to parameter names. For example, in cask the `postJson` decorator will
@@ -78,12 +96,12 @@ Major changes:
   def fn(a: Int, b: String) // a and b map directly to fields
   ```
 
-  In keg, I have decided do drop by-name parameters except of path segments
+  In keg, I have decided do drop by-name parameters except for path segments
   (paths must be static in keg). This in my opinion makes it very
   straightforward to know where a parameter conversion happens:
   - if it's declared in the path, it will be by name (and will use a FromPath[?]
     typeclass as mentioned in the first point)
-  - otherwise, there must be a FromRequest typeclass available
+  - otherwise, there must be a `FromRequest` typeclass available
 
   E.g.
 
@@ -96,7 +114,7 @@ Major changes:
   `more` require a `FromRequest[String]` and `FromRequest[SomeClass]` to be in
   scope.
 
-  This approach has the consequence that parameters names are no longer
+  This approach has the consequence that parameter names are no longer
   meaningful outside of path parameters. Using the earlier JSON example, in keg
   you can no longer define decorators which would set individual parameters to
   correspond to field names. Instead, you'd need to go through a custom class:
@@ -118,8 +136,8 @@ Major changes:
   ```
 
   The main reason I have done this is to simplify decorators: there's no more
-  intermediate type, so each parameters must be parsed directly from the
-  request. The reason for simplifying decorators is described below.
+  intermediate type, so each parameter must be parsed directly from the
+  request.
 
   Note: this design may be revisited; I don't think that there's anything
   technically stopping us from using an intermediate type and mapping parameters
@@ -129,9 +147,9 @@ Major changes:
   be handled later by the server, a decorator MUST always return a response.
   Hence, error handling stays local to the decorator.
 
-Minor stuff:
+## Minor stuff
 
-- Reduce need for inheritance in routes.
+- Enumerate routes with a macro without requiring inheritance.
 
   Don't require route declarations to be in subclasses of `cask.Routes`.
   Instead, allow finding routes in the current object with a macro.
@@ -175,6 +193,8 @@ Minor stuff:
   mechanical task). Essentially, this means that undertow is now an
   implementation detail and can be switched out later.
 
+## Merging back to cask?
+
 These features require some significant changes to cask's decorators, which I
 would say are at least 50% of what makes cask cask. Hence changing them would
 change cask in everything except the name.
@@ -183,6 +203,6 @@ Also, the macros which derive endpoints from annotated methods become more
 powerful, and I only really want to work with Scala 3 macros. Hence, I'd need to
 drop Scala 2 support for cask.
 
-These changes led me to creating a new framework, `keg`. Essentially, keg is a
-different syntax sugar layer for cask. It still uses the same (or similar)
-request handling machinery from cask, and uses the same webserver.
+These changes led me to creating a new framework, `keg`. Essentially, keg
+started as different syntax sugar layer for cask. Its routing machinery is still
+very similar to that of cask.

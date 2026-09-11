@@ -2,7 +2,7 @@ package keg.main
 
 import keg.model.Request
 import keg.model.Response
-import keg.model.FinalResponse
+import keg.model.RawResponse
 import keg.model.Data
 import keg.model.Endpoint
 import keg.model.Recovery
@@ -92,7 +92,7 @@ case class Server(
     Interceptor.compose(activeInterceptors)
 
   // invokes the endpoint and recovery if needed
-  private def invoke(ep: Endpoint, req: Request): FinalResponse =
+  private def invoke(ep: Endpoint, req: Request): RawResponse =
     try
       if !WebAppUtil.checkCsrf(req.method, req.headers, csrfAllowedOrigins) then
         throw AbortException(403, "CSRF validation failed")
@@ -101,7 +101,7 @@ case class Server(
       case scala.util.control.NonFatal(e) =>
         recovery.invoke(req, e, Some(ep))
 
-  private val handlerFunc: Request => FinalResponse = (req0: Request) =>
+  private val handlerFunc: Request => RawResponse = (req0: Request) =>
     scribe.debug(s"Received request: ${req0.method} ${req0.path}")
     val sessionData = req0.cookies.get("_session") match
       case None => Map.empty[String, String]

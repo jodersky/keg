@@ -57,8 +57,7 @@ object Response:
   given [A](using c: Conversion[A, Data]): Conversion[Response[A], Response[Data]] =
     a => a.copy(data = c(a.data))
 
-type RawResponse = Response[Data]
-type FinalResponse = RawResponse | WsResponse
+type RawResponse = Response[Data] | WsResponse
 
 trait Data:
 

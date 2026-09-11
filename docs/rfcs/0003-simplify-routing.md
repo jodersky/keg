@@ -1,4 +1,4 @@
-# RFC 1 - Simplify routing and endpoint hierarchy
+# RFC 3 - Simplify routing and endpoint hierarchy
 
 ## Background
 

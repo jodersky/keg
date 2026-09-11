@@ -39,30 +39,6 @@ impose how you build your application.
 Keg is NOT a full-featured framework, which imposes an application structure,
 such as Django or Play! You can use it as a library if you like.
 
-## Differences with cask
-
-Given the name "Keg" is a nod to "Cask", there is no surprise that it resembles
-the latter. Keg started out as a heavily customized version of cask, which I
-used internally for some services, and ended up ripping out. What you see here
-is essentially that, cleaned up a little.
-
-This repository serves to showcase some ideas of keg. It may be possible to
-upstream changes back into cask (although it would change many core cask APIs).
-
-The original cask customizations were the following:
-
-- Keg's focus is around extensible request-scoped state (e.g. adding the logged
-  in user to a request, or checking authorization).
-
-  - Defining cask decorators as member types of a configuration trait and making
-    input parsing path-dependent. This gave me an easy way to define typeclasses
-    for various parameter types.
-
-- A server available under scalanative
-
-These then led to a more. [See here](./cask-diff.md) for a description of most
-changes and their rationales.
-
 ## Feature overview
 
 - [Basics](#basics)
@@ -751,7 +727,7 @@ def errorHandler(
   req: keg.Request,
   ep: Option[keg.Endpoint],
   ex: Throwable
-): keg.FinalResponse =
+): keg.RawResponse =
   // In this example we include the messages in the response. In a real app,
   // you'd usually hide the message, or use an application-specific exception
   // type when you actually want to include the message in the response body.
@@ -812,7 +788,7 @@ Websocket support is more-or-less copied directly from cask.
 
 ```scala
 @keg.get("/hello/:x")
-def hello(x: String): keg.FinalResponse =
+def hello(x: String): keg.RawResponse =
   if x != "secret" then
     // you can also return a normal HTTP response in a websocket handler if you
     // want to
@@ -1121,8 +1097,8 @@ object LoggingInterceptor extends keg.Interceptor:
   def intercept(
     request: keg.Request,
     endpoint: keg.Endpoint,
-    next: keg.Request => keg.FinalResponse
-  ): keg.FinalResponse =
+    next: keg.Request => keg.RawResponse
+  ): keg.RawResponse =
     println(s"--> ${request.method} ${request.path}")
     val response = next(request)
     response match
@@ -1147,8 +1123,8 @@ object GzipInterceptor extends keg.Interceptor:
   def intercept(
     request: keg.Request,
     endpoint: keg.Endpoint,
-    next: keg.Request => keg.FinalResponse
-  ): keg.FinalResponse =
+    next: keg.Request => keg.RawResponse
+  ): keg.RawResponse =
     // Decompress request body if Content-Encoding: gzip
     val req =
       if request.headers.get("content-encoding").exists(_.equalsIgnoreCase("gzip")) then
@@ -1196,8 +1172,8 @@ case class ApiKeyInterceptor(validKey: String) extends keg.Interceptor:
   def intercept(
     request: keg.Request,
     endpoint: keg.Endpoint,
-    next: keg.Request => keg.FinalResponse
-  ): keg.FinalResponse =
+    next: keg.Request => keg.RawResponse
+  ): keg.RawResponse =
     request.headers.get("x-api-key") match
       case Some(key) if key == validKey =>
         next(request)
@@ -1438,7 +1414,16 @@ In debug mode, keg changes the following behaviour:
 
 ### Layers
 
-(arrow means "depends on")
+Keg is built as a layered framework:
+
+- the high-level annotation-based code is in package `derivation`
+- the routing logic and HTTP request/response modeling are in `main` and `model`
+- low-level backend servers in `transport`
+
+Commonly used definitions are exported as top level definitions in the `keg.*`
+package, this way a user can write `keg.Request` instead of `keg.model.Request`.
+
+Package dependencies:
 
 ```mermaid
 graph LR
@@ -1454,60 +1439,66 @@ graph LR
   transport --> model
 ```
 
-- model: scala types that are used to represent things involved in handling HTTP
-  requests
-
-- derivation: syntax sugar and macros to allow a user to write "nice" programs
-
-- main: routing logic and higher-level runtime components
-
-- transport: low-level, pluggable implementation of an HTTP server. This is
-  primarily made separate so that different backends can exist, for example
-  undertow for the JVM, and a custom simplistic server for scalanative
-
 Derivation and model layers are to be considered as library layers, no logging
 or side-effecting is allowed; those are reserved for main and transport.
 
-
-#### Response types
+### Response types
 
 ```mermaid
 graph BT
   simple["Response[A]"]
-  raw["Response[Data] == RawResponse"]
+  raw["Response[Data]"]
   ws["WsResponse"]
-  web["FinalResponse"]
+  web["RawResponse"]
 
   ws --> web
   raw --> web
   simple -.-> raw
 ```
 
-- the HTTP layer understands two types of responses:
-  - "simple" HTTP response
-  - web sockets
-- these are abstracted by a type alias `FinalResponse`
-- at the end of the day, an endpoint must always return a `FinalResponse`
+The HTTP layer understands two types of responses:
 
-- however, `Response` is made generic for ergonomics:
+  - "simple" HTTP responses (`Response[Data]`): these represent plain HTTP
+    responses with streamable bodies.
+  - web sockets (`WsResponse`)
+
+These are abstracted by a type alias `RawResponse`, which is what an endpoint
+must return at the end of the day.
+
+Even though a simple endpoint will always need to return a `Response[Data]`,
+where `Data` encodes something streamable, the response type is completely
+generic `class Response[A]`. The reason for this is ergonomics:
+
   - in the derivation layer, we allow a user to return any type `T` from a
     method, so long as there is a `ToResponse[T]` available
   - we do this for two reasons:
     - out of symmetry to `FromRequest[?]`
     - to allow users to define common serialization logic in their config traits
   - assuming that a method can return an arbitrary `T`, it would be strange and
-    counter-intuitive, if it couldn't return a `Response[T]`. Essentially, we're
+    counter-intuitive if it couldn't return a `Response[T]`. Essentially, we're
     saying that if serialization logic can be defined in the config trait, that
     same logic should apply for the case where a user returns that type wrapped
-    in a response. Put another way, we saw that a response can be a specialized
+    in a response. Put another way, we say that a response can be a specialized
     return value.
-  - for the conversion to work, the routes() macro uses the fact that
+  - for the conversion to work, the `routes()` macro uses the fact that
     `ToResponse`s are path-dependent
   - however, in the annotated method themselves, there is no `ToResponse`
     available (at least not without an import, which we want to avoid)
   - hence, we allow the *construction* of generic `Response[A]`s, but require
     that they be convertible via a `ToResponse` to a raw response
-  - it would be *possible* to create a duplicate hierarchy, where `RawResponse`
-    becomes an entirely different type (rather than a type alias) which is used
-    by the routing layer, and the generic response is confined to the derivation
-    layer
+
+It would be *possible* to create a duplicate hierarchy, where `Response[Data]`
+becomes an entirely different type which is used by the routing layer, and the
+generic response is confined to the derivation layer
+
+### RFCs
+
+Check out docs/rfcs/ for some RFC-style documents. These range from information
+to suggesting new designs.
+
+## Acknowledgements
+
+Given the name "Keg" is a nod to "Cask", there is no surprise that it resembles
+the latter. Keg started out as a heavily customized version of cask. [See
+here](./docs/rfcs/0001-cask-diff.md) for a description of most changes and their
+rationales.

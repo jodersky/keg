@@ -3,7 +3,7 @@ package keg.derivation
 import scala.quoted.Expr
 import scala.quoted.Type
 import scala.quoted.Quotes
-import keg.model.FinalResponse
+import keg.model.RawResponse
 
 def routesImpl()(using q: Quotes) =
   import q.reflect.*
@@ -194,7 +194,7 @@ def endpointImpl(using qctx: Quotes)(
       List("request")
     )(
       _ => List(TypeRepr.of[keg.model.Request]),
-      _ => TypeRepr.of[keg.model.FinalResponse]
+      _ => TypeRepr.of[keg.model.RawResponse]
     ), {
       case (sym, List(req)) =>
 
@@ -259,12 +259,12 @@ def endpointImpl(using qctx: Quotes)(
 
         val block = Block(
           List(ctxDef) ++ valDefss.flatten ++ paramChecks(sym, prefix, Ref(ctxSym), valSymss, req.asExprOf[keg.model.Request]).flatten,
-          conversion.asExprOf[keg.model.FinalResponse].asTerm
+          conversion.asExprOf[keg.model.RawResponse].asTerm
         )
         block
       case _ => ???
     }
-  ).asExprOf[keg.model.Request => keg.model.FinalResponse]
+  ).asExprOf[keg.model.Request => keg.model.RawResponse]
 
   '{
     keg.model.Endpoint(
@@ -287,9 +287,9 @@ def recoveryImpl(using qctx: Quotes)(
   import qctx.reflect.*
 
   val rt = method.termRef.widenTermRefByName.asInstanceOf[MethodType].resType.widenTermRefByName
-  if !(rt <:< TypeRepr.of[keg.model.FinalResponse]) then
+  if !(rt <:< TypeRepr.of[keg.model.RawResponse]) then
     report.errorAndAbort(
-      s"Recovery method must return FinalResponse, but found ${rt.show}",
+      s"Recovery method must return RawResponse, but found ${rt.show}",
       method.pos.get
     )
 
@@ -303,7 +303,7 @@ def recoveryImpl(using qctx: Quotes)(
         TypeRepr.of[Throwable],
         TypeRepr.of[Option[keg.model.Endpoint]]
       ),
-      _ => TypeRepr.of[keg.model.FinalResponse]
+      _ => TypeRepr.of[keg.model.RawResponse]
     ), {
       case (sym, List(req, ex, ep)) =>
         val argss = for params <- method.paramSymss yield
@@ -331,6 +331,6 @@ def recoveryImpl(using qctx: Quotes)(
 
   '{
       keg.model.Recovery(
-        invoke = ${invokeFunc.asExprOf[(keg.model.Request, Throwable, Option[keg.model.Endpoint]) => keg.model.FinalResponse]}
+        invoke = ${invokeFunc.asExprOf[(keg.model.Request, Throwable, Option[keg.model.Endpoint]) => keg.model.RawResponse]}
       )
   }

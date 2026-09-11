@@ -1,7 +1,7 @@
 package keg.transport.uhttp
 
 import keg.transport.Transport
-import keg.model.{Request, Response, FinalResponse, WsResponse}
+import keg.model.{Request, Response, RawResponse, WsResponse}
 import keg.transport.Listener
 
 case class Limits(
@@ -22,7 +22,7 @@ case class Limits(
   */
 class UhttpTransport(
   listeners: Seq[Listener],
-  handler: Request => FinalResponse,
+  handler: Request => RawResponse,
   limits: Limits = Limits(),
   workerPool: java.util.concurrent.ExecutorService = java.util.concurrent.Executors.newCachedThreadPool()
 ) extends Transport:

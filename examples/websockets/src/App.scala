@@ -4,7 +4,7 @@ package app
 
 //snippet:start
 @keg.get("/hello/:x")
-def hello(x: String): keg.FinalResponse =
+def hello(x: String): keg.RawResponse =
   if x != "secret" then
     // you can also return a normal HTTP response in a websocket handler if you
     // want to

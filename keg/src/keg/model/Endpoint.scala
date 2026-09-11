@@ -30,9 +30,9 @@ sealed trait Route
   * @param meta Metadata about the endpoint, such as the source file and line
   *   number where the endpoint was defined.
   */
-case class Endpoint(path: String, methods: Iterable[String], invoke: Request => FinalResponse, meta: EndpointMeta) extends Route
+case class Endpoint(path: String, methods: Iterable[String], invoke: Request => RawResponse, meta: EndpointMeta) extends Route
 object Endpoint:
-  def apply(path: String, methods: Iterable[String] = Seq("GET"), invoke: Request => FinalResponse)(using pos: keg.util.Pos): Endpoint =
+  def apply(path: String, methods: Iterable[String] = Seq("GET"), invoke: Request => RawResponse)(using pos: keg.util.Pos): Endpoint =
     Endpoint(path, methods, invoke, EndpointMeta())
 
 case class EndpointMeta(
@@ -68,5 +68,5 @@ object EndpointMeta:
   * failure result, and returns a response to be sent to the client.
   */
 case class Recovery(
-  invoke: (Request, Throwable, Option[Endpoint]) => FinalResponse
+  invoke: (Request, Throwable, Option[Endpoint]) => RawResponse
 ) extends Route

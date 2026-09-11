@@ -1,3 +1,5 @@
+# RFC 2 - Backend HTTP server
+
 What underlying server should we use?
 
 In keg, each request is run in one method call, which itself can contain

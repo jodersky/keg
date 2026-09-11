@@ -24,7 +24,7 @@ def errorHandler(
   req: keg.Request,
   ep: Option[keg.Endpoint],
   ex: Throwable
-): keg.FinalResponse =
+): keg.RawResponse =
   // In this example we include the messages in the response. In a real app,
   // you'd usually hide the message, or use an application-specific exception
   // type when you actually want to include the message in the response body.
