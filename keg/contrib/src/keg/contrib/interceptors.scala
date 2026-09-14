@@ -22,19 +22,20 @@ class LoggingInterceptor extends Interceptor:
         wsResp
 
 object TimingInterceptor:
-  val histogram = ustats.histogram(
+  private val histogram = ustats.histogram(
     name = "http_request_duration_seconds",
     help = "Histogram of HTTP request durations in seconds",
     buckets = ustats.BucketDistribution.httpRequestDuration,
     labels = Seq("method", "path", "status", "endpoint", "server")
   )
 
-  val KnownMethods = Set("GET", "PUT", "PATCH", "POST", "DELETE")
-
-class TimingInterceptor(server: String) extends Interceptor:
-  import TimingInterceptor.*
-
+  private val KnownMethods = Set(
+    "GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "CONNECT", "TRACE"
+  )
   private def methodLabel(m: String) = if KnownMethods.contains(m) then m else "_OTHER"
+
+class TimingInterceptor(server: String = "main") extends Interceptor:
+  import TimingInterceptor.*
 
   // pre-populate the histogram with all endpoints, so that we have metrics for
   // them even if they haven't been hit yet
