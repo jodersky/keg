@@ -87,12 +87,12 @@ Parameter 'y' is invalid: Invalid integer in path
 case class UserId(value: String)
 // we can define a `keg.FromPath` instance for it like this:
 object UserId:
-  given keg.default.FromPath[UserId] with
-    def fromPath(segment: String, ctx: keg.default.Context) =
+  given keg.FromPath[UserId] with
+    def fromPath(segment: String, ctx: Unit) =
       if segment.startsWith("abc") then
-        keg.derivation.Result.Continue(UserId(segment))
+        keg.Result.Continue(UserId(segment))
       else
-        keg.derivation.Result.Abort(400, "User ID must start with 'abc'")
+        keg.Result.Abort(400, "User ID must start with 'abc'")
 // and then we can use `UserId` as a parameter type in our endpoint:
 @keg.get("/users/:id")
 def getUser(id: UserId) =
@@ -113,7 +113,7 @@ Parameter 'id' is invalid: User ID must start with 'abc'
 //
 // You can also define wildcard parameters that match the rest of the path using
 // `*`. For example, the following endpoint will match any path that starts with
-// `/files/` and pass the rest of the path as the `path` parameter:
+// `/files/`:
 //snippet:start
 @keg.get("/files/*")
 def files(req: keg.Request) =
@@ -129,14 +129,16 @@ Requested file: path/to/file.txt
 
 // #### Overlapping routes
 //
-// Keg uses a trie-based router, similar to cask's. This means that all routes
-// must be unique and that they may not overlap with wildcards. This is checked
-// at server construction time.
+// Keg uses a greedy trie-based router, which does lookups in linear time to
+// number of path segments. The router has the following characteristics:
+// - static paths are always preferred
+// - followed by dynamic paths
+// - in case no match is found, the closest wildcard is used
 //
-// There is one exception however: it's possible to have a static and dynamic
-// route overlap, in which case the static route will take precedence over the
-// dynamic one. This allows you to build applications with "vanity" URLs, for
-// example a GitHub-style web interface for user profiles:
+// It is possible to have a static and dynamic route overlap, in which case the
+// static route will take precedence over the dynamic one. This allows you to
+// build applications with "vanity" URLs, for example a GitHub-style web
+// interface for user profiles:
 //snippet:start
 @keg.get("/:username")
 def userProfile(username: String) =
@@ -144,6 +146,9 @@ def userProfile(username: String) =
 @keg.get("/settings")
 def settings() =
   "User settings"
+@keg.get("/*")
+def notfound() =
+  "Not found"
 //snippet:end
 /* usage snippet
 $ curl "http://localhost:8080/alice"
@@ -152,6 +157,10 @@ User profile for alice
 /* usage snippet
 $ curl "http://localhost:8080/settings"
 User settings
+*/
+/* usage snippet
+$ curl "http://localhost:8080/alice/foo"
+Not found
 */
 // If you use this pattern, it is up to you to ensure that no users can register
 // with a username that conflicts with one of your static routes (e.g.

@@ -47,7 +47,7 @@ val keyPath = java.nio.file.Paths.get("nonexistent.key")
 val certPath = java.nio.file.Paths.get("nonexistent.crt")
 
 // By default the server listens on port 8080. You can change this by setting
-//the `listeners` parameter when creating the server.
+// the `listeners` parameter when creating the server.
 //snippet:start
 val serverWithConfig = keg.Server(
   routes,

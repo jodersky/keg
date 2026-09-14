@@ -21,16 +21,20 @@ export keg.main.Interceptor
 export keg.transport.Listener
 
 object default extends keg.derivation.Api
-export keg.default.request
-export keg.default.get
-export keg.default.post
-export keg.default.put
-export keg.default.delete
-export keg.default.patch
-export keg.default.error
+export default.request
+export default.get
+export default.post
+export default.put
+export default.delete
+export default.patch
+export default.error
+export default.FromPath
+export default.FromRequest
+export default.ToResponse
 
 export keg.derivation.routes
 export keg.derivation.Result
+export keg.derivation.Api
 
 // export keg.forms.FormResult
 export keg.forms.FormData

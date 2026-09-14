@@ -91,10 +91,21 @@ trait BaseApi:
 
   /** Create a context from a request.
     *
-    * This method is called by the endpoint macro, and is intended to be
+    * This method is called by the endpoint macro, and is intended to2 be
     * implemented by the user.
     */
   def parseContext(request: Request): Context
+
+  // def handle(req: Request, ctx: Context, inner: (Request, Context) => RawResponse): RawResponse
+
+  // def invoke(req: Request): RawResponse =
+  //   val ctx = parseContext(req)
+  //   val params = ???
+  //   val inner =
+  //     (req, ctx) => ??? // macro generated
+
+  //   handle(req, ctx, inner)
+
 
   /** Type class for extracting values from a path segment. */
   trait FromPath[+A]:

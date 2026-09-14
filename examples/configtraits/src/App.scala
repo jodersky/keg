@@ -23,16 +23,16 @@ package app
 //snippet:start
 case class Pagination(page: Int, pageSize: Int) // imagine this is from a third-party library
 
-object app extends keg.derivation.Api:
+object app extends keg.Api:
 
   // Defined here rather than in Pagination's companion object, which we don't control
   given FromRequest[Pagination] with
-    def fromRequest(req: keg.Request, ctx: Context): keg.derivation.Result[Pagination] =
+    def fromRequest(req: keg.Request, ctx: Context): keg.Result[Pagination] =
       val page = req.params.get("page").flatMap(_.toIntOption).getOrElse(1)
       val pageSize = req.params.get("pageSize").flatMap(_.toIntOption).getOrElse(10)
-      keg.derivation.Result.Continue(Pagination(page, pageSize))
+      keg.Result.Continue(Pagination(page, pageSize))
 
-// Use @app.post, not @keg.post, so the macro resolves FromRequest inside `app`
+// Use `@app.post`, not `@keg.post`, so the macro resolves `FromRequest` inside `app`
 @app.post("/profile")
 def profile(pagination: Pagination) =
   s"Page: ${pagination.page}, Page Size: ${pagination.pageSize}\n"

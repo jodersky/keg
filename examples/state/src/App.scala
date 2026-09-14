@@ -20,15 +20,15 @@ package app
 //snippet:start
 case class User(name: String)
 
-object app extends keg.derivation.Api:
+object app extends keg.Api:
   // in a real application, this would likely be a database or an external service
   val userDb = collection.mutable.Map[String, User]("alice" -> User("Alice"))
 
   given FromRequest[User] with
-    def fromRequest(req: keg.Request, ctx: Context): keg.derivation.Result[User] =
+    def fromRequest(req: keg.Request, ctx: Context): keg.Result[User] =
       userDb.get(req.params.get("username").getOrElse("")) match
-        case Some(user) => keg.derivation.Result.Continue(user)
-        case None       => keg.derivation.Result.Respond(keg.Response("Unauthorized\n", 401))
+        case Some(user) => keg.Result.Continue(user)
+        case None       => keg.Result.Respond(keg.Response("Unauthorized\n", 401))
 
 @app.post("/profile")
 def profile(user: User) =
@@ -59,12 +59,12 @@ Unauthorized
 class UserService:
   val userDb = collection.mutable.Map[String, User]("alice" -> User("Alice"))
 
-class App(userService: UserService) extends keg.derivation.Api:
+class App(userService: UserService) extends keg.Api:
   given FromRequest[User] with
-    def fromRequest(req: keg.Request, ctx: Context): keg.derivation.Result[User] =
+    def fromRequest(req: keg.Request, ctx: Context): keg.Result[User] =
       userService.userDb.get(req.params.get("username").getOrElse("")) match
-        case Some(user) => keg.derivation.Result.Continue(user)
-        case None       => keg.derivation.Result.Respond(keg.Response("Unauthorized\n", 401))
+        case Some(user) => keg.Result.Continue(user)
+        case None       => keg.Result.Respond(keg.Response("Unauthorized\n", 401))
 
 class Routes(app: App):
 

@@ -25,9 +25,13 @@ val server = keg.Server(
 $ curl "https://localhost:8443/hello" --cacert creds/server-ca.crt
 hello world
 */
+// Changes to files are picked up automatically on each new connection. This
+// means that that if a certificate is updated (by an automated process for
+// example), the new certificate will be seamlessly used and no restart of the
+// server is required.
 
 // It's also possible to use a client certificate for authentication. Add the
-//`clientCa` parameter:
+// `clientCa` parameter:
 //snippet:start
 val serverWithClientAuth = keg.Server(
   keg.routes(),
@@ -59,7 +63,7 @@ Your client certificate subject is: CN=client
 // > **It is up to your application to check for the presence of a client
 // > certificate**, keg will still accept requests without a client certificate.
 // > It only guarantees that if `request.clientCertificate` is `Some(cert)`
-// > that it has been signed by the specified CA and is still valid.
+// > that it has been signed by the specified CA and not expired.
 
 @main
 def main() =

@@ -108,7 +108,7 @@ hello
 
 
 By default the server listens on port 8080. You can change this by setting
-he `listeners` parameter when creating the server.
+the `listeners` parameter when creating the server.
 
 ```scala
 val serverWithConfig = keg.Server(
@@ -226,12 +226,12 @@ to parse path parameters of that type. For example, if we have a `UserId` type:
 case class UserId(value: String)
 // we can define a `keg.FromPath` instance for it like this:
 object UserId:
-  given keg.default.FromPath[UserId] with
-    def fromPath(segment: String, ctx: keg.default.Context) =
+  given keg.FromPath[UserId] with
+    def fromPath(segment: String, ctx: Unit) =
       if segment.startsWith("abc") then
-        keg.derivation.Result.Continue(UserId(segment))
+        keg.Result.Continue(UserId(segment))
       else
-        keg.derivation.Result.Abort(400, "User ID must start with 'abc'")
+        keg.Result.Abort(400, "User ID must start with 'abc'")
 // and then we can use `UserId` as a parameter type in our endpoint:
 @keg.get("/users/:id")
 def getUser(id: UserId) =
@@ -254,7 +254,7 @@ Parameter 'id' is invalid: User ID must start with 'abc'
 
 You can also define wildcard parameters that match the rest of the path using
 `*`. For example, the following endpoint will match any path that starts with
-`/files/` and pass the rest of the path as the `path` parameter:
+`/files/`:
 
 ```scala
 @keg.get("/files/*")
@@ -272,14 +272,16 @@ Requested file: path/to/file.txt
 
 #### Overlapping routes
 
-Keg uses a trie-based router, similar to cask's. This means that all routes
-must be unique and that they may not overlap with wildcards. This is checked
-at server construction time.
+Keg uses a greedy trie-based router, which does lookups in linear time to
+number of path segments. The router has the following characteristics:
+- static paths are always preferred
+- followed by dynamic paths
+- in case no match is found, the closest wildcard is used
 
-There is one exception however: it's possible to have a static and dynamic
-route overlap, in which case the static route will take precedence over the
-dynamic one. This allows you to build applications with "vanity" URLs, for
-example a GitHub-style web interface for user profiles:
+It is possible to have a static and dynamic route overlap, in which case the
+static route will take precedence over the dynamic one. This allows you to
+build applications with "vanity" URLs, for example a GitHub-style web
+interface for user profiles:
 
 ```scala
 @keg.get("/:username")
@@ -288,6 +290,9 @@ def userProfile(username: String) =
 @keg.get("/settings")
 def settings() =
   "User settings"
+@keg.get("/*")
+def notfound() =
+  "Not found"
 ```
 
 ```
@@ -298,6 +303,11 @@ User profile for alice
 ```
 $ curl "http://localhost:8080/settings"
 User settings
+```
+
+```
+$ curl "http://localhost:8080/alice/foo"
+Not found
 ```
 If you use this pattern, it is up to you to ensure that no users can register
 with a username that conflicts with one of your static routes (e.g.
@@ -577,16 +587,16 @@ too, giving us one central place to look.
 ```scala
 case class Pagination(page: Int, pageSize: Int) // imagine this is from a third-party library
 
-object app extends keg.derivation.Api:
+object app extends keg.Api:
 
   // Defined here rather than in Pagination's companion object, which we don't control
   given FromRequest[Pagination] with
-    def fromRequest(req: keg.Request, ctx: Context): keg.derivation.Result[Pagination] =
+    def fromRequest(req: keg.Request, ctx: Context): keg.Result[Pagination] =
       val page = req.params.get("page").flatMap(_.toIntOption).getOrElse(1)
       val pageSize = req.params.get("pageSize").flatMap(_.toIntOption).getOrElse(10)
-      keg.derivation.Result.Continue(Pagination(page, pageSize))
+      keg.Result.Continue(Pagination(page, pageSize))
 
-// Use @app.post, not @keg.post, so the macro resolves FromRequest inside `app`
+// Use `@app.post`, not `@keg.post`, so the macro resolves `FromRequest` inside `app`
 @app.post("/profile")
 def profile(pagination: Pagination) =
   s"Page: ${pagination.page}, Page Size: ${pagination.pageSize}\n"
@@ -633,15 +643,15 @@ guards in Rocket](https://rocket.rs/guide/v0.5/requests/#request-guards).
 ```scala
 case class User(name: String)
 
-object app extends keg.derivation.Api:
+object app extends keg.Api:
   // in a real application, this would likely be a database or an external service
   val userDb = collection.mutable.Map[String, User]("alice" -> User("Alice"))
 
   given FromRequest[User] with
-    def fromRequest(req: keg.Request, ctx: Context): keg.derivation.Result[User] =
+    def fromRequest(req: keg.Request, ctx: Context): keg.Result[User] =
       userDb.get(req.params.get("username").getOrElse("")) match
-        case Some(user) => keg.derivation.Result.Continue(user)
-        case None       => keg.derivation.Result.Respond(keg.Response("Unauthorized\n", 401))
+        case Some(user) => keg.Result.Continue(user)
+        case None       => keg.Result.Respond(keg.Response("Unauthorized\n", 401))
 
 @app.post("/profile")
 def profile(user: User) =
@@ -675,12 +685,12 @@ injection.
 class UserService:
   val userDb = collection.mutable.Map[String, User]("alice" -> User("Alice"))
 
-class App(userService: UserService) extends keg.derivation.Api:
+class App(userService: UserService) extends keg.Api:
   given FromRequest[User] with
-    def fromRequest(req: keg.Request, ctx: Context): keg.derivation.Result[User] =
+    def fromRequest(req: keg.Request, ctx: Context): keg.Result[User] =
       userService.userDb.get(req.params.get("username").getOrElse("")) match
-        case Some(user) => keg.derivation.Result.Continue(user)
-        case None       => keg.derivation.Result.Respond(keg.Response("Unauthorized\n", 401))
+        case Some(user) => keg.Result.Continue(user)
+        case None       => keg.Result.Respond(keg.Response("Unauthorized\n", 401))
 
 class Routes(app: App):
 
@@ -978,9 +988,13 @@ val server = keg.Server(
 $ curl "https://localhost:8443/hello" --cacert creds/server-ca.crt
 hello world
 ```
+Changes to files are picked up automatically on each new connection. This
+means that that if a certificate is updated (by an automated process for
+example), the new certificate will be seamlessly used and no restart of the
+server is required.
 
 It's also possible to use a client certificate for authentication. Add the
-clientCa` parameter:
+`clientCa` parameter:
 
 ```scala
 val serverWithClientAuth = keg.Server(
@@ -1014,7 +1028,7 @@ Your client certificate subject is: CN=client
 > **It is up to your application to check for the presence of a client
 > certificate**, keg will still accept requests without a client certificate.
 > It only guarantees that if `request.clientCertificate` is `Some(cert)`
-> that it has been signed by the specified CA and is still valid.
+> that it has been signed by the specified CA and not expired.
 
 
 

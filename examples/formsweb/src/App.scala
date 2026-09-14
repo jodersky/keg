@@ -31,7 +31,7 @@ def index(data: keg.FormData) =
   keg.Response(s"Hello, $name! Value is: $value")
 
 @keg.post("/upload")
-def upload(data: keg.model.UploadFormData) =
+def upload(data: keg.UploadFormData) =
   val fileContent = java.nio.file.Files.readString(data.files("file").path)
   keg.Response(s"File content is: $fileContent")
 
