@@ -2,6 +2,7 @@ package keg.contrib
 
 import keg.main.Interceptor
 import keg.model.{Endpoint, Request, Response, RawResponse, WsResponse}
+import java.io.OutputStream
 
 class LoggingInterceptor extends Interceptor:
 
@@ -20,44 +21,61 @@ class LoggingInterceptor extends Interceptor:
         scribe.info(s"WebSocket response for ${request.method} ${request.path}")
         wsResp
 
-class TimingInterceptor extends Interceptor:
+object TimingInterceptor:
   val histogram = ustats.histogram(
     name = "http_request_duration_seconds",
     help = "Histogram of HTTP request durations in seconds",
     buckets = ustats.BucketDistribution.httpRequestDuration,
-    labels = Seq("method", "path", "status")
+    labels = Seq("method", "path", "status", "endpoint", "server")
   )
 
-  // pre-populate the histogram with all endpoints and common status codes, so
-  // that we have metrics for them even if they haven't been hit yet
+  val KnownMethods = Set("GET", "PUT", "PATCH", "POST", "DELETE")
+
+class TimingInterceptor(server: String) extends Interceptor:
+  import TimingInterceptor.*
+
+  private def methodLabel(m: String) = if KnownMethods.contains(m) then m else "_OTHER"
+
+  // pre-populate the histogram with all endpoints, so that we have metrics for
+  // them even if they haven't been hit yet
   override def onStartup(endpoints: Seq[Endpoint]): Unit =
     for ep <- endpoints do
-      for method <- ep.methods do
-        histogram(method, ep.path, "200")
+      for m <- ep.methods do
+        histogram(methodLabel(m), ep.path, "200", ep.meta.function, server)
 
   def intercept(request: Request, endpoint: Endpoint, next: Request => RawResponse): RawResponse =
-    val startTime = System.nanoTime()
+    val t0 = System.nanoTime()
     val response = next(request)
-    val endTime = System.nanoTime()
-    val durationSeconds = (endTime - startTime).toDouble / 1e9
 
-    val status = response match
-      case resp: Response[keg.model.Data] => resp.status.toString
-      case wsResp: WsResponse => "101" // Switching Protocols
-
-    val hist = histogram(request.method, request.path, status)
-    hist.observe(durationSeconds)
-    response
-
-  override def endpoints: Seq[Endpoint] = Seq(
-    Endpoint(
-      "/metrics", Seq("GET"),
-      invoke = _ =>
-        Response(
-          data = ustats.Registry.global
+    response match
+      case r: Response[keg.Data] =>
+        r.copy(
+          data = new keg.Data:
+            def write(out: OutputStream): Unit =
+              try
+                r.data.write(out)
+              finally
+                val delta = (System.nanoTime() - t0) / 1E9
+                histogram(
+                  methodLabel(request.method),
+                  endpoint.path,
+                  r.status.toString(),
+                  endpoint.meta.function,
+                  server
+                ).observe(delta)
+            def contentLength: Option[Long] = r.data.contentLength
+            def headers: Seq[(String, String)] = r.data.headers
         )
-    )
-  )
+      case ws: WsResponse =>
+        val delta = (System.nanoTime() - t0) / 1E9
+        histogram(
+          methodLabel(request.method),
+          endpoint.path,
+          "101",
+          endpoint.meta.function,
+          server
+        ).observe(delta)
+        ws
 
 // a simple token-bucket rate limiter
 case class RateLimiter(
