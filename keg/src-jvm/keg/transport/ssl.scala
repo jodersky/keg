@@ -184,7 +184,7 @@ object Ssl:
       if certs == null || certs.isEmpty then None
       else
         val x509 = certs.head.asInstanceOf[java.security.cert.X509Certificate]
-        val commonName = x509.getSubjectX500Principal.getName()
+        val subjectName = x509.getSubjectX500Principal.getName()
 
         val altNames =
           val raw = x509.getSubjectAlternativeNames()
@@ -200,6 +200,6 @@ object Ssl:
                 case 7 => Some(keg.model.ClientCertificate.AltNameType.IP)
                 case _ => Some(keg.model.ClientCertificate.AltNameType.Other)
               altNameType.map(_ -> value)
-        Some(keg.model.ClientCertificate(commonName, altNames))
+        Some(keg.model.ClientCertificate(subjectName, altNames))
     catch
       case _: javax.net.ssl.SSLPeerUnverifiedException => None
