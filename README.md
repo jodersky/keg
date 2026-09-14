@@ -56,6 +56,7 @@ such as Django or Play! You can use it as a library if you like.
 - [Transports](#transports)
 - [Forms](#forms)
 - [JSON](#json)
+- [Static assets](#static-assets)
 - [Debug mode and live reload](#debug-mode-and-live-reload)
 
 ### Basics
@@ -1406,7 +1407,7 @@ HTTP/1.1 400 Bad Request
 
 
 Static assets such as stylesheets, scripts, and images can be served with
-the helpers in `keg.model.Static`. Assets are looked up on the classpath by
+the helpers in `keg.Static`. Assets are looked up on the classpath by
 default (e.g. files in a module's `resources` directory, which get bundled
 into the application's jar), or on the filesystem with `classpath = false`.
 
@@ -1418,7 +1419,7 @@ the file extension.
 ```scala
 @keg.get("/")
 def index() =
-  keg.model.Static.single("/assets/index.html")
+  keg.Static.single("/assets/index.html")
 ```
 
 ```
@@ -1439,7 +1440,7 @@ request path matched by a wildcard endpoint. Here, a request to
 ```scala
 @keg.get("/static/*")
 def assets(req: keg.Request) =
-  keg.model.Static.fromRequest(req, "/assets")
+  keg.Static.fromRequest(req, "/assets")
 ```
 
 ```
@@ -1453,7 +1454,7 @@ Relative paths are resolved against the server's working directory:
 ```scala
 @keg.get("/files/*")
 def files(req: keg.Request) =
-  keg.model.Static.fromRequest(req, "public", classpath = false)
+  keg.Static.fromRequest(req, "public", classpath = false)
 ```
 
 ```

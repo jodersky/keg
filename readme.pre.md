@@ -33,6 +33,7 @@ such as Django or Play! You can use it as a library if you like.
 - [Transports](#transports)
 - [Forms](#forms)
 - [JSON](#json)
+- [Static assets](#static-assets)
 - [Debug mode and live reload](#debug-mode-and-live-reload)
 
 ### Basics
