@@ -1623,3 +1623,10 @@ Given the name "Keg" is a nod to "Cask", there is no surprise that it resembles
 the latter. Keg started out as a heavily customized version of cask. [See
 here](./docs/rfcs/0001-cask-diff.md) for a description of most changes and their
 rationales.
+
+## Notice about AI
+
+Parts of this project have been developed with the assistance of LLMs. The
+emphasis is on *assistance* however. This is not a "vibe coded" project. LLMs
+have been mostly used to generate tests and examples, and in some cases (such as
+parsers) working code from a specification.
