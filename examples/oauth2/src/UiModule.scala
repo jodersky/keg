@@ -17,7 +17,7 @@ class UiModule(app: App, config: Config, db: simplesql.DataSource, userInfoRepo:
 
   @app.get("/static/*")
   def assets(req: keg.Request) =
-    keg.model.Static.staticResources("/static", req.remainingPathSegments)
+    keg.model.Static.fromRequest(req, "/static", classpath = true)
 
   // TODO: this should probably be in a separate module
   @app.get("/health")

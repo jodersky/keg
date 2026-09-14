@@ -359,6 +359,7 @@ def exampleProjects = Seq(
   build.examples.state.jvm,
   build.examples.forms.jvm,
   build.examples.json.jvm,
+  build.examples.static,
 )
 
 // update actual readme from snippets in example apps

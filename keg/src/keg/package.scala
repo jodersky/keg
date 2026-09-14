@@ -12,6 +12,7 @@ export keg.model.Endpoint
 export keg.model.EndpointMeta
 export keg.model.Recovery
 export keg.model.RawResponse
+export keg.model.Static
 export keg.model.Ws
 export keg.model.WsActor
 

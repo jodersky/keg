@@ -1,0 +1,8 @@
+package build.examples.static
+
+import mill.scalalib.*
+
+object `package` extends build.UsageExampleModule with ScalaModule:
+  def scalaVersion = build.scala3
+  def moduleDeps = Seq(build.keg.jvm)
+  def serverExecutable = assembly()

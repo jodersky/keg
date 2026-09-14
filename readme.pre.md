@@ -142,6 +142,10 @@ You can also implement your own transport if you like. Take a look at the
 
 [include:json]
 
+### Static assets
+
+[include:static]
+
 ### Debug mode and live reload
 
 Keg has a built-in debug mode that activates extra developer tooling. It is

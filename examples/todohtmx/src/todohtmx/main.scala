@@ -31,7 +31,7 @@ object Main:
 
   @app.get("/static/*")
   def assets(req: keg.Request) =
-    keg.model.Static.staticResources("/static", req.remainingPathSegments)
+    keg.model.Static.fromRequest(req, "/static", classpath = true)
 
   // ---------------------------------------------------------------------------
   // DB helpers
