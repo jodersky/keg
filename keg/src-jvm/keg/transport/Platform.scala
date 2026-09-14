@@ -29,5 +29,4 @@ object Platform:
         Ssl.extractClientCert(ssls.getSession())
       case _ => None
 
-  def mkDefaultTransport: Transport.BuilderFunc =
-    (listeners, handler) => UndertowTransport(listeners, handler)
+  def defaultTransport: Transport = UndertowTransport

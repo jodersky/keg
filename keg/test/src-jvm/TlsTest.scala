@@ -1,5 +1,4 @@
 import utest.*
-import keg.transport.Transport.BuilderFunc
 
 object TlsTest extends TestSuite:
 
@@ -7,7 +6,7 @@ object TlsTest extends TestSuite:
     key: os.Path,
     cert: os.Path,
     clientCa: Option[os.Path],
-    transportBuilder: BuilderFunc
+    transport: keg.transport.Transport
   )(fn: String => Unit): Unit =
     val endpoints = Seq(
       keg.Endpoint(
@@ -29,7 +28,7 @@ object TlsTest extends TestSuite:
     val server = keg.Server(
       endpoints = endpoints,
       listeners = Seq(keg.Listener.Https("::1", 0, key = key.toNIO, cert = cert.toNIO, clientCa = clientCa.map(_.toNIO))),
-      transportBuilder = transportBuilder
+      transport = transport
     )
     server.start()
     try
@@ -88,46 +87,46 @@ object TlsTest extends TestSuite:
   val tests = Tests:
     test("server"):
       test("undertow"):
-        withServer(serverKey, serverCert, None, keg.transport.UndertowTransport(_, _)): url =>
+        withServer(serverKey, serverCert, None, keg.transport.UndertowTransport): url =>
           val response = requests.get(s"$url/hello", sslContext = keg.transport.Platform.mkSslContext(serverKey.toNIO, serverCert.toNIO, Some(serverCaCert.toNIO)))
           assert(response.statusCode == 200)
           assert(response.text() == "Hello, world!")
 
       test("uhttp"):
-        withServer(serverKey, serverCert, None, keg.transport.uhttp.UhttpTransport(_, _)): url =>
+        withServer(serverKey, serverCert, None, keg.transport.uhttp.UhttpTransport): url =>
           val response = requests.get(s"$url/hello", sslContext = keg.transport.Platform.mkSslContext(serverKey.toNIO, serverCert.toNIO, Some(serverCaCert.toNIO)))
           assert(response.statusCode == 200)
           assert(response.text() == "Hello, world!")
 
     test("valid mtls"):
-      def testValid(builder: BuilderFunc) = withServer(serverKey, serverCert, Some(clientCaCert), transportBuilder = builder): url =>
+      def testValid(transport: keg.transport.Transport) = withServer(serverKey, serverCert, Some(clientCaCert), transport = transport): url =>
           val sslContext = keg.transport.Platform.mkSslContext(clientKey.toNIO, clientCert.toNIO, Some(serverCaCert.toNIO))
           val response = requests.get(s"$url/hello", sslContext = sslContext)
           assert(response.statusCode == 200)
           assert(response.text() == "Hello, CN=Test Client!")
 
       test("undertow"):
-        testValid(keg.transport.UndertowTransport(_, _))
+        testValid(keg.transport.UndertowTransport)
 
       test("uhttp"):
-        testValid(keg.transport.uhttp.UhttpTransport(_, _))
+        testValid(keg.transport.uhttp.UhttpTransport)
 
     test("client cert not configured"):
       // if client cert is not configured server side, it should be ignored
-      def testValid(builder: BuilderFunc) = withServer(serverKey, serverCert, None, transportBuilder = builder): url =>
+      def testValid(transport: keg.transport.Transport) = withServer(serverKey, serverCert, None, transport = transport): url =>
           val sslContext = keg.transport.Platform.mkSslContext(clientKey.toNIO, clientCert.toNIO, Some(serverCaCert.toNIO))
           val response = requests.get(s"$url/hello", sslContext = sslContext)
           assert(response.statusCode == 200)
           assert(response.text() == "Hello, world!")
 
       test("undertow"):
-        testValid(keg.transport.UndertowTransport(_, _))
+        testValid(keg.transport.UndertowTransport)
 
       test("uhttp"):
-        testValid(keg.transport.uhttp.UhttpTransport(_, _))
+        testValid(keg.transport.uhttp.UhttpTransport)
 
     test("altnames"):
-      def testAltNames(builder: BuilderFunc) = withServer(serverKey, serverCert, Some(clientCaCert), transportBuilder = builder): url =>
+      def testAltNames(transport: keg.transport.Transport) = withServer(serverKey, serverCert, Some(clientCaCert), transport = transport): url =>
         val sslContext = keg.transport.Platform.mkSslContext(multiSanClientKey.toNIO, multiSanClientCert.toNIO, Some(serverCaCert.toNIO))
         val response = requests.get(s"$url/altnames", sslContext = sslContext)
         assert(response.statusCode == 200)
@@ -138,19 +137,19 @@ object TlsTest extends TestSuite:
         assert(altNames.contains("URI:https://example.com"))
 
       test("undertow"):
-        testAltNames(keg.transport.UndertowTransport(_, _))
+        testAltNames(keg.transport.UndertowTransport)
 
       test("uhttp"):
-        testAltNames(keg.transport.uhttp.UhttpTransport(_, _))
+        testAltNames(keg.transport.uhttp.UhttpTransport)
 
     test("invalid mtls"):
-      def testInvalid(builder: BuilderFunc) = withServer(serverKey, serverCert, Some(clientCaCert), transportBuilder = builder): url =>
+      def testInvalid(transport: keg.transport.Transport) = withServer(serverKey, serverCert, Some(clientCaCert), transport = transport): url =>
           val sslContext = keg.transport.Platform.mkSslContext(clientKey.toNIO, clientCert.toNIO, None)
           assertThrows[requests.InvalidCertException]:
             requests.get(s"$url/hello", sslContext = sslContext)
 
       test("undertow"):
-        testInvalid(keg.transport.UndertowTransport(_, _))
+        testInvalid(keg.transport.UndertowTransport)
 
       test("uhttp"):
-        testInvalid(keg.transport.uhttp.UhttpTransport(_, _))
+        testInvalid(keg.transport.uhttp.UhttpTransport)

@@ -353,6 +353,7 @@ def exampleProjects = Seq(
   build.examples.websockets,
   build.examples.sessionflash.jvm,
   build.examples.interceptors.jvm,
+  build.examples.transports.jvm,
   build.examples.endpoints,
   build.examples.tls,
   build.examples.configtraits.jvm,

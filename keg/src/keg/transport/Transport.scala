@@ -2,7 +2,7 @@ package keg.transport
 
 import keg.model.{Request, Response, RawResponse}
 
-trait Transport:
+trait BackendServer:
 
   /** Starts the transport, making it ready to accept requests. */
   def start(): Unit
@@ -31,7 +31,7 @@ trait Transport:
   def awaitTermination(): Unit
 
 
-object Transport:
+trait Transport:
 
   /** Initializes a transport with the given listeners and request handler.
     *
@@ -49,4 +49,4 @@ object Transport:
     * - when serializing a Response: session, flash should not be used (they
     *   will have been converted to cookies by the application layer)
     */
-  type BuilderFunc = (Seq[Listener], Request => RawResponse) => Transport
+  def init(listeners: Seq[Listener], handler: Request => RawResponse): BackendServer

@@ -72,7 +72,7 @@ object TlsReloadTest extends TestSuite:
           )
         ),
         listeners = Seq(keg.Listener.Https("::1", 0, key = liveKey.toNIO, cert = liveCert.toNIO, clientCa = None)),
-        transportBuilder = keg.transport.UndertowTransport(_, _)
+        transport = keg.transport.UndertowTransport
       )
       server.start()
       val url = s"https://[::1]:${server.serverPort()}"

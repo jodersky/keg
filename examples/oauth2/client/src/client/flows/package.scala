@@ -102,9 +102,7 @@ def authorizationCodeFlow(
   val server = keg.Server(
     endpoints = Seq(ep),
     listeners = Seq(keg.Listener.Http("::", port)),
-    transportBuilder =
-      (listeners, handler) =>
-        keg.transport.uhttp.UhttpTransport(listeners, handler)
+    transport = keg.transport.uhttp.UhttpTransport
   )
 
   try

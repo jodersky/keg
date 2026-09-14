@@ -42,7 +42,7 @@ object ServerTest extends TestSuite:
       val server = keg.Server(
         endpoints = endpoints,
         listeners = Seq(keg.transport.Listener.Http("::1", 8081)),
-        transportBuilder = (listeners, handler) => keg.transport.uhttp.UhttpTransport(listeners, handler)
+        transport = keg.transport.uhttp.UhttpTransport
       )
       server.start()
       try

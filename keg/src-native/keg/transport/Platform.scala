@@ -13,5 +13,4 @@ object Platform:
 
   def extractClientCertificate(socket: java.net.Socket): Option[keg.model.ClientCertificate] = None
 
-  def mkDefaultTransport: Transport.BuilderFunc =
-    (listeners, handler) => new uhttp.UhttpTransport(listeners, handler)
+  def defaultTransport: Transport = uhttp.UhttpTransport

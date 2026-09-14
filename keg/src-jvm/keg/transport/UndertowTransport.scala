@@ -3,7 +3,7 @@ package keg.transport
 import io.undertow
 import keg.model.{Request, Response, RawResponse, WsResponse}
 
-object UndertowTransport:
+object UndertowTransport extends Transport:
   // TODO: this is kind of a hack, not sure if we should keep it? But I would
   // also like to avoid keg becoming some enterprisey framework, which requires
   // a bunch of random configuration to be set for a decent experience.
@@ -46,11 +46,14 @@ object UndertowTransport:
     io.undertow.Undertow.builder()
       .setServerOption(io.undertow.UndertowOptions.ENABLE_RFC6265_COOKIE_VALIDATION, true)
 
+  def init(listeners: Seq[keg.transport.Listener], handler: Request => RawResponse) =
+    UndertowTransport(listeners, handler)
+
 class UndertowTransport(
   listeners: Seq[Listener],
   fn: Request => RawResponse,
   builder: undertow.Undertow.Builder = UndertowTransport.builder()
-) extends Transport:
+) extends BackendServer:
   UndertowTransport.jbossLogging()
 
   private given castorContext: castor.Context = castor.Context.Simple(

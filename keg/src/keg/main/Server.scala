@@ -53,7 +53,7 @@ case class Server(
     csrfAllowedOrigins: Set[String] = Set.empty,
     interceptors: Seq[Interceptor] = Seq.empty,
     debugInterceptors: Seq[Interceptor] = Seq(Reloader),
-    transportBuilder: keg.transport.Transport.BuilderFunc = keg.transport.Platform.mkDefaultTransport
+    transport: keg.transport.Transport = keg.transport.Platform.defaultTransport
 ):
   // scribe.info(s"Debug mode: $debugMode")
   // scribe.info(s"Initializing Keg Server with ${endpoints.size} endpoints")
@@ -186,7 +186,7 @@ case class Server(
 
     response
 
-  private val transport = transportBuilder(listeners, handlerFunc)
+  private val backend = transport.init(listeners, handlerFunc)
 
   def start(): Unit =
     if activeInterceptors.nonEmpty then
@@ -199,29 +199,29 @@ case class Server(
       }))
 
     scribe.debug(s"Starting Keg server")
-    transport.start()
+    backend.start()
 
-    val listenerInfo = transport.getListeners.map(_.asUrl).mkString(", ")
+    val listenerInfo = backend.getListeners.map(_.asUrl).mkString(", ")
     if debugMode then
       scribe.warn(s"Keg server in DEBUG mode listening on $listenerInfo")
     else
       scribe.info(s"Keg server listening on $listenerInfo")
 
-  def serverPort() = transport.getListeners.headOption match
+  def serverPort() = backend.getListeners.headOption match
     case Some(keg.transport.Listener.Http(_, port)) => port
     case Some(keg.transport.Listener.Https(_, port, _, _, _)) => port
     case None => throw new Exception("Server is not listening on any ports")
 
   def awaitTermination(): Unit =
-    transport.awaitTermination()
+    backend.awaitTermination()
 
   def stop(): Unit =
     scribe.info("stopping keg server")
-    transport.stop()
+    backend.stop()
 
   def kill(): Unit =
     scribe.info("killing keg server")
-    transport.kill()
+    backend.kill()
 
 object Server:
 

@@ -3,6 +3,7 @@ package keg.transport.uhttp
 import keg.transport.Transport
 import keg.model.{Request, Response, RawResponse, WsResponse}
 import keg.transport.Listener
+import keg.transport.BackendServer
 
 case class Limits(
   maxMethodLength: Int = 32,
@@ -20,12 +21,12 @@ case class Limits(
   * short-lived processes such as CLI tools. Note however that HTTPS support is
   * not available under ScalaNative.
   */
-class UhttpTransport(
+class UhttpServer(
   listeners: Seq[Listener],
   handler: Request => RawResponse,
   limits: Limits = Limits(),
   workerPool: java.util.concurrent.ExecutorService = java.util.concurrent.Executors.newCachedThreadPool()
-) extends Transport:
+) extends BackendServer:
   private var serverSockets: Seq[(Listener, java.net.ServerSocket)] = Seq.empty
 
   def start(): Unit =
@@ -202,7 +203,10 @@ class UhttpTransport(
     for (_, socket) <- serverSockets do socket.close()
     workerPool.shutdownNow()
 
-object UhttpTransport:
+object UhttpTransport extends Transport:
+
+  def init(listeners: Seq[Listener], handler: Request => RawResponse) =
+    UhttpServer(listeners, handler)
 
   val StandardReasonPhrases = Map(
     100 -> "Continue",
