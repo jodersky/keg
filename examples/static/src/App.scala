@@ -1,9 +1,11 @@
 package app
 
 // Static assets such as stylesheets, scripts, and images can be served with
-// the helpers in `keg.Static`. Assets are looked up on the classpath by
-// default (e.g. files in a module's `resources` directory, which get bundled
-// into the application's jar), or on the filesystem with `classpath = false`.
+// the helpers in `keg.Static`. Each helper comes in two variants: one looking
+// up assets on the classpath (e.g. files in a module's `resources` directory,
+// which get bundled into the application's jar), and one with a `File` suffix
+// looking up assets on the filesystem. Classpath resources are not available
+// on Scala Native, so use the `File` variants there.
 //
 // #### Single assets
 //
@@ -38,12 +40,13 @@ $ curl http://localhost:8080/static/main.css
 h1 { color: teal; }
 */
 
-// To serve files from the filesystem instead, set `classpath = false`.
-// Relative paths are resolved against the server's working directory:
+// To serve files from the filesystem instead, use `fromRequestFile` (or
+// `singleFile` for a single file). Relative paths are resolved against the
+// server's working directory:
 //snippet:start
 @keg.get("/files/*")
 def files(req: keg.Request) =
-  keg.Static.fromRequest(req, "public", classpath = false)
+  keg.Static.fromRequestFile(req, "public")
 //snippet:end
 /* usage snippet
 $ curl http://localhost:8080/files/hello.txt

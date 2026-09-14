@@ -1,6 +1,6 @@
 package keg.model
 
-import java.io.OutputStream
+import java.io.{InputStream, OutputStream}
 
 object MimeTypes:
 
@@ -76,22 +76,43 @@ object Static:
     "zstd" -> "zst"
   )
 
-  private def exists(path: String, classpath: Boolean): Boolean =
-    if classpath then
-      this.getClass().getResource(path) != null
-    else
-      java.nio.file.Files.isRegularFile(java.nio.file.Paths.get(path))
+  // Asset lookup is abstracted as functions rather than selected by a flag, so
+  // that classpath access is only reachable when a classpath method is actually
+  // used. Scala Native does not support classpath resources and would otherwise
+  // fail to link.
 
-  private def serve(path: String, classpath: Boolean, headers: Seq[(String, String)]): RawResponse =
-    if !exists(path, classpath) then
+  // note: `getResource` is not implemented on Scala Native, so we check for
+  // existence by opening the resource instead
+  private def resourceExists(path: String): Boolean =
+    val in = this.getClass().getResourceAsStream(path)
+    if in == null then
+      false
+    else
+      in.close()
+      true
+
+  private def resourceOpen(path: String): InputStream =
+    this.getClass().getResourceAsStream(path)
+
+  private def fileExists(path: String): Boolean =
+    java.nio.file.Files.isRegularFile(java.nio.file.Paths.get(path))
+
+  private def fileOpen(path: String): InputStream =
+    java.nio.file.Files.newInputStream(java.nio.file.Paths.get(path))
+
+  private def serve(
+    path: String,
+    headers: Seq[(String, String)],
+    exists: String => Boolean,
+    open: String => InputStream
+  ): RawResponse =
+    if !exists(path) then
       Response((), 404)
     else
       Response(
         data = new Data:
           def write(out: OutputStream): Unit =
-            val in =
-              if classpath then this.getClass().getResourceAsStream(path)
-              else java.nio.file.Files.newInputStream(java.nio.file.Paths.get(path))
+            val in = open(path)
             try
               in.transferTo(out)
             finally
@@ -103,7 +124,7 @@ object Static:
         headers = headers
       )
 
-  /** Serve a single, fixed static asset.
+  /** Serve a single, fixed static asset from the classpath.
     *
     * The `Content-Type` header is derived from the path's extension. If the
     * asset does not exist, a 404 response is returned.
@@ -112,34 +133,64 @@ object Static:
     * input to this method. Use [[fromRequest]] to serve assets from a
     * directory based on the request path instead.
     *
+    * Classpath resources are not available on Scala Native; use [[singleFile]]
+    * there.
+    *
     * Example:
     * {{{
     * @keg.get("/")
-    * def index() = keg.model.Static.single("/assets/index.html")
+    * def index() = keg.Static.single("/assets/index.html")
     * }}}
     *
-    * @param path the asset's path. If `classpath` is true, this is an absolute
-    * resource name (e.g. `/assets/index.html`), otherwise a filesystem path,
-    * relative to the working directory or absolute.
-    * @param classpath look up the asset on the classpath (the default) or on
-    * the filesystem
+    * @param path the absolute resource name of the asset, e.g.
+    * `/assets/index.html`
     * @param headers additional response headers; by default, assets are marked
     * as publicly cacheable for a week
     */
   def single(
     path: String,
-    classpath: Boolean = true,
     headers: Seq[(String, String)] = DefaultHeaders
   ): RawResponse =
-    serve(path, classpath, ("Content-Type" -> MimeTypes.fromPath(path)) +: headers)
+    serveSingle(path, headers, resourceExists, resourceOpen)
 
-  /** Serve a static asset from a directory, based on the request path.
+  /** Serve a single, fixed static file from the filesystem.
+    *
+    * This is the filesystem counterpart of [[single]], and behaves the same way
+    * otherwise.
+    *
+    * Example:
+    * {{{
+    * @keg.get("/")
+    * def index() = keg.Static.singleFile("public/index.html")
+    * }}}
+    *
+    * @param path the file's path, either absolute or relative to the working
+    * directory
+    * @param headers additional response headers; by default, assets are marked
+    * as publicly cacheable for a week
+    */
+  def singleFile(
+    path: String,
+    headers: Seq[(String, String)] = DefaultHeaders
+  ): RawResponse =
+    serveSingle(path, headers, fileExists, fileOpen)
+
+  private def serveSingle(
+    path: String,
+    headers: Seq[(String, String)],
+    exists: String => Boolean,
+    open: String => InputStream
+  ): RawResponse =
+    serve(path, ("Content-Type" -> MimeTypes.fromPath(path)) +: headers, exists, open)
+
+  /** Serve a static asset from a classpath directory, based on the request
+    * path.
     *
     * This is meant to be used in wildcard endpoints. The asset's path is
     * composed of the base directory and the request's remaining path segments,
     * i.e. the part of the path matched by the wildcard. For example, with a
     * wildcard endpoint under `/static` and directory `/assets`, a request to
-    * `/static/css/main.css` serves the asset `/assets/css/main.css`.
+    * `/static/css/main.css` serves the resource `/assets/css/main.css`.
     *
     * Paths containing `.` or `..` segments are rejected to prevent path
     * traversal, so it is safe to use with user-provided request paths. The
@@ -148,23 +199,22 @@ object Static:
     * 404 response is returned.
     *
     * Precompressed assets are served transparently: if the client accepts one
-    * of `negotiateEncodings` and a sibling file with the encoding's extension
-    * exists (e.g. `main.css.gz` for `gzip`, `main.css.br` for `br`), that file
+    * of `negotiateEncodings` and a sibling asset with the encoding's extension
+    * exists (e.g. `main.css.gz` for `gzip`, `main.css.br` for `br`), that asset
     * is served instead, with a matching `Content-Encoding` header.
+    *
+    * Classpath resources are not available on Scala Native; use
+    * [[fromRequestFile]] there.
     *
     * Example:
     * {{{
     * // in a wildcard endpoint under /static
-    * def assets(req: keg.Request) = keg.model.Static.fromRequest(req, "/assets")
+    * def assets(req: keg.Request) = keg.Static.fromRequest(req, "/assets")
     * }}}
     *
     * @param request the request, whose remaining path segments determine the
     * asset
-    * @param directory the base directory. If `classpath` is true, this is an
-    * absolute resource prefix (e.g. `/assets`), otherwise a filesystem path,
-    * relative to the working directory or absolute.
-    * @param classpath look up assets on the classpath (the default) or on the
-    * filesystem
+    * @param directory the absolute resource prefix of the assets, e.g. `/assets`
     * @param headers additional response headers; by default, assets are marked
     * as publicly cacheable for a week
     * @param negotiateEncodings content encodings of precompressed variants to
@@ -173,9 +223,48 @@ object Static:
   def fromRequest(
     request: Request,
     directory: String,
-    classpath: Boolean = true,
     headers: Seq[(String, String)] = DefaultHeaders,
     negotiateEncodings: Seq[String] = Seq("br", "gzip")
+  ): RawResponse =
+    serveFromRequest(request, directory, headers, negotiateEncodings, resourceExists, resourceOpen)
+
+  /** Serve a static file from a filesystem directory, based on the request
+    * path.
+    *
+    * This is the filesystem counterpart of [[fromRequest]], and behaves the
+    * same way otherwise, including path traversal protection and serving of
+    * precompressed files.
+    *
+    * Example:
+    * {{{
+    * // in a wildcard endpoint under /files
+    * def files(req: keg.Request) = keg.Static.fromRequestFile(req, "public")
+    * }}}
+    *
+    * @param request the request, whose remaining path segments determine the
+    * file
+    * @param directory the base directory, either absolute or relative to the
+    * working directory
+    * @param headers additional response headers; by default, assets are marked
+    * as publicly cacheable for a week
+    * @param negotiateEncodings content encodings of precompressed variants to
+    * look for, in order of preference; pass an empty sequence to disable
+    */
+  def fromRequestFile(
+    request: Request,
+    directory: String,
+    headers: Seq[(String, String)] = DefaultHeaders,
+    negotiateEncodings: Seq[String] = Seq("br", "gzip")
+  ): RawResponse =
+    serveFromRequest(request, directory, headers, negotiateEncodings, fileExists, fileOpen)
+
+  private def serveFromRequest(
+    request: Request,
+    directory: String,
+    headers: Seq[(String, String)],
+    negotiateEncodings: Seq[String],
+    exists: String => Boolean,
+    open: String => InputStream
   ): RawResponse =
     if request.remainingPathSegments.isEmpty then
       return Response((), 404)
@@ -210,7 +299,7 @@ object Static:
         val enc = encodingIt.next()
         if acceptableEncodings.contains(enc) then
           val candidate = fullPath + "." + EncodingExtensions.getOrElse(enc, enc)
-          if exists(candidate, classpath) then
+          if exists(candidate) then
             servedPath = candidate
             finalHeaders += "Content-Encoding" -> enc
             found = true
@@ -218,4 +307,4 @@ object Static:
     finalHeaders += "Content-Type" ->  MimeTypes.fromPath(fullPath)
     finalHeaders ++= headers
 
-    serve(servedPath, classpath, finalHeaders.result())
+    serve(servedPath, finalHeaders.result(), exists, open)

@@ -46,7 +46,7 @@ object Reloader extends Interceptor:
       "/__dev_ws.js",
       Seq("GET"),
       invoke = (request: keg.model.Request) =>
-        keg.model.Static.single("/reload.js", classpath = true)
+        keg.model.Static.single("/reload.js")
     )
   )
 

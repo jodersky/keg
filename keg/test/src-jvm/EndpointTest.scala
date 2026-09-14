@@ -284,7 +284,7 @@ object EndpointTest extends TestSuite:
         keg.Endpoint(
           "/static/*", Seq("GET"),
           invoke = (req: keg.Request) =>
-            keg.model.Static.fromRequest(req, "/foo", classpath = true),
+            keg.model.Static.fromRequest(req, "/foo"),
           meta = keg.EndpointMeta()
         )
       )
@@ -326,7 +326,7 @@ object EndpointTest extends TestSuite:
           "/static/*", Seq("GET"),
           invoke = (req: keg.Request) =>
             val root = sys.env("MILL_WORKSPACE_ROOT")
-              keg.model.Static.fromRequest(req, s"$root/keg/test/resources/foo", classpath = false),
+              keg.model.Static.fromRequestFile(req, s"$root/keg/test/resources/foo"),
           meta = keg.EndpointMeta()
         )
       )
