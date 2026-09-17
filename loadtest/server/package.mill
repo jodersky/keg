@@ -1,0 +1,33 @@
+package build.loadtest.server
+
+import mill.*
+import mill.scalalib.*
+import mill.scalanativelib.*
+import mill.scalanativelib.api.{LTO, ReleaseMode}
+
+// The server under test. Both variants share `src`; the platform-specific
+// directories only list the transports available on that platform.
+//
+// Build a standalone executable to benchmark, rather than using `run`, so that
+// the server does not share a process with mill:
+//
+//   ./mill show loadtest.server.jvm.assembly
+//   ./mill show loadtest.server.native.nativeLink
+object `package` extends mill.Module:
+
+  object jvm extends ScalaModule:
+    def moduleDir = super.moduleDir / os.up
+    def scalaVersion = build.scala3
+    def moduleDeps = Seq(build.keg.jvm)
+    def mvnDeps = Seq(build.thirdparty.clip)
+    def sources = Task.Sources(moduleDir / "src", moduleDir / "src-jvm")
+
+  object native extends ScalaNativeModule:
+    def moduleDir = super.moduleDir / os.up
+    def scalaVersion = build.scala3
+    def scalaNativeVersion = build.scalaNative
+    def moduleDeps = Seq(build.keg.native)
+    def mvnDeps = Seq(build.thirdparty.clip)
+    def sources = Task.Sources(moduleDir / "src", moduleDir / "src-native")
+    def releaseMode = ReleaseMode.ReleaseFull
+    def nativeLTO = LTO.Thin

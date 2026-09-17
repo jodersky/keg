@@ -1,0 +1,5 @@
+package build.loadtest
+
+// Macro benchmarks: a server under test (`server`), driven by an external load
+// generator (oha) through an orchestrator (`runner`). This is complementary to
+// the JMH micro benchmarks in `bench`.

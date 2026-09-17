@@ -1,0 +1,22 @@
+package build.loadtest.runner
+
+import mill.*
+import mill.scalalib.*
+
+// Orchestrates load tests: builds and starts the server under test for every
+// target, and drives it with oha. Run with:
+//
+//   ./mill loadtest.runner.run --help
+object `package` extends ScalaModule:
+  def scalaVersion = build.scala3
+  def mvnDeps = Seq(build.thirdparty.clip, build.thirdparty.upickle)
+
+  // The server executables are built before the runner starts, and passed to
+  // it in the environment. The runner can't build them itself: a nested mill
+  // invocation would wait for this one to finish.
+  def forkEnv = Task:
+    super.forkEnv() ++ Map(
+      "KEG_WORKSPACE" -> Task.ctx().workspace.toString,
+      "KEG_LOADTEST_JAR" -> build.loadtest.server.jvm.assembly().path.toString,
+      "KEG_LOADTEST_NATIVE" -> build.loadtest.server.native.nativeLink().path.toString
+    )

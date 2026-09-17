@@ -7,6 +7,7 @@ import mill.scalalib.*
 object thirdparty:
   val caffeine = mvn"com.github.ben-manes.caffeine:caffeine:3.1.8"
   val castor = mvn"com.lihaoyi::castor::0.3.2"
+  val clip = mvn"io.crashbox::clip::0.2.3"
   val geny = mvn"com.lihaoyi::geny::1.1.1"
   val jbossThreads = mvn"org.jboss.threads:jboss-threads:3.9.2" // upgrade undertow's transitive dependency to something which won't give unsafe warnings!
   val nativeCrypto = mvn"com.github.lolgab::scala-native-crypto::0.3.0"
