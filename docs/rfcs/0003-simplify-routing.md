@@ -1,5 +1,8 @@
 # RFC 3 - Simplify routing and endpoint hierarchy
 
+status
+: implemented
+
 ## Background
 
 Currently, when defining endpoints manually we have too much ceremony.

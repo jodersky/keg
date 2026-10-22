@@ -1,5 +1,8 @@
 # RFC 1 - Differences with cask
 
+status
+: informational
+
 Given the name "Keg" is a nod to "Cask", there is no surprise that it resembles
 the latter. Keg started out as a heavily customized version of cask, which I
 used internally for some services, and ended up ripping out. What you see here
