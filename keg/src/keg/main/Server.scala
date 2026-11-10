@@ -241,6 +241,7 @@ object Server:
               code
             )
         case _ =>
+          scribe.error(s"Unhandled exception processing ${req.method} ${req.path}", err)
           if debugMode then
             Response(err.toString, 500)
           else
