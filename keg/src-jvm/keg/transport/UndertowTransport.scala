@@ -42,9 +42,24 @@ object UndertowTransport extends Transport:
       val after  = hextets.slice(bestStart + bestLen, 8).map(_.toHexString).mkString(":")
       s"$before::$after"
 
+  /** Default number of worker threads. Keg handlers run blocking code on these
+    * threads, so we use a larger pool than Undertow's default (8 × I/O threads),
+    * which is tuned for mostly CPU-bound handlers. */
+  def defaultWorkerThreads: Int =
+    math.max(200, 16 * Runtime.getRuntime().availableProcessors())
+
+  /** Worker threads kept alive when idle. */
+  def defaultCoreWorkerThreads: Int =
+    2 * Runtime.getRuntime().availableProcessors()
+
   def builder() =
     io.undertow.Undertow.builder()
       .setServerOption(io.undertow.UndertowOptions.ENABLE_RFC6265_COOKIE_VALIDATION, true)
+      .setWorkerThreads(defaultWorkerThreads)
+      // Undertow sets core == max, so threads created during a spike would
+      // never exit. With a smaller core, threads above it exit after the XNIO
+      // keep-alive (60s default). The pool still grows to max before queueing.
+      .setWorkerOption(org.xnio.Options.WORKER_TASK_CORE_THREADS, defaultCoreWorkerThreads)
 
   def init(listeners: Seq[keg.transport.Listener], handler: Request => RawResponse) =
     UndertowTransport(listeners, handler)
