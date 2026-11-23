@@ -54,9 +54,15 @@ object WebAppUtil:
       case Some(origin) =>
         try
           val originUrl = new java.net.URI(origin)
-          val originHost = originUrl.getHost()
-          val host = headers.get("host").getOrElse("")
-          if originHost == host then
+          // The Host header carries the port too (e.g. "example.com:8080"), so
+          // compare both. A missing port is the scheme's default: the Origin
+          // header leaves it out, and so may the Host header.
+          val hostUrl = new java.net.URI(null, headers.get("host").getOrElse(""), null, null, null).parseServerAuthority()
+          def port(p: Int) = if p != -1 then p else defaultPort(originUrl.getScheme())
+          if originUrl.getHost() != null && hostUrl.getHost() != null &&
+            originUrl.getHost().equalsIgnoreCase(hostUrl.getHost()) &&
+            port(originUrl.getPort()) == port(hostUrl.getPort())
+          then
             // The Origin header matches the Host header. Note that the Host header
             // doesn't include the scheme, so we don't know if this might be an
             // HTTP→HTTPS cross-origin request. We fail open, since all modern
@@ -71,6 +77,11 @@ object WebAppUtil:
     return isExempt()
 
   end checkCsrf
+
+  private def defaultPort(scheme: String): Int = scheme match
+    case "http"  => 80
+    case "https" => 443
+    case _       => -1
 
   /** Sign (HMAC) a map of key-value pairs, with an expiration time.
     *

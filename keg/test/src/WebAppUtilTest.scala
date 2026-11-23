@@ -24,6 +24,32 @@ object WebAppUtilTest extends TestSuite:
         assert(!WebAppUtil.checkCsrf("POST", MultiDict(Map("sec-fetch-site" -> List("cross-site"), "origin" -> List("https://evil.com"))), Set("https://allowed.com")))
       test("allows matching Origin and Host"):
         assert(WebAppUtil.checkCsrf("POST", MultiDict(Map("origin" -> List("https://example.com"), "host" -> List("example.com"))), Set.empty))
+      test("allows matching Origin and Host with a port"):
+        assert(WebAppUtil.checkCsrf("POST", MultiDict(Map("origin" -> List("http://10.0.0.1:10001"), "host" -> List("10.0.0.1:10001"))), Set.empty))
+        assert(WebAppUtil.checkCsrf("POST", MultiDict(Map("origin" -> List("http://[::1]:8080"), "host" -> List("[::1]:8080"))), Set.empty))
+      test("allows a default port written out"):
+        assert(WebAppUtil.checkCsrf("POST", MultiDict(Map("origin" -> List("https://example.com"), "host" -> List("example.com:443"))), Set.empty))
+        assert(WebAppUtil.checkCsrf("POST", MultiDict(Map("origin" -> List("https://Example.com"), "host" -> List("example.com"))), Set.empty))
+      test("blocks a different port"):
+        assert(!WebAppUtil.checkCsrf("POST", MultiDict(Map("origin" -> List("http://example.com:8080"), "host" -> List("example.com:9090"))), Set.empty))
+        assert(!WebAppUtil.checkCsrf("POST", MultiDict(Map("origin" -> List("http://example.com:8080"), "host" -> List("example.com"))), Set.empty))
+      test("blocks a non-default port against the scheme's default"):
+        assert(!WebAppUtil.checkCsrf("POST", MultiDict(Map("origin" -> List("https://example.com"), "host" -> List("example.com:80"))), Set.empty))
+        assert(!WebAppUtil.checkCsrf("POST", MultiDict(Map("origin" -> List("http://[::1]:8080"), "host" -> List("[::1]:9090"))), Set.empty))
+      test("allows an http/https mismatch (Host carries no scheme)"):
+        // Documented fail-open: see the comment in checkCsrf.
+        assert(WebAppUtil.checkCsrf("POST", MultiDict(Map("origin" -> List("http://example.com"), "host" -> List("example.com"))), Set.empty))
+      test("blocks an opaque null Origin"):
+        assert(!WebAppUtil.checkCsrf("POST", MultiDict(Map("origin" -> List("null"), "host" -> List("example.com"))), Set.empty))
+      test("allows a null Origin if in allowed list"):
+        assert(WebAppUtil.checkCsrf("POST", MultiDict(Map("origin" -> List("null"), "host" -> List("example.com"))), Set("null")))
+      test("blocks an unknown scheme with a different host"):
+        assert(!WebAppUtil.checkCsrf("POST", MultiDict(Map("origin" -> List("chrome-extension://abc"), "host" -> List("example.com"))), Set.empty))
+      test("blocks a missing Host"):
+        assert(!WebAppUtil.checkCsrf("POST", MultiDict(Map("origin" -> List("https://example.com"))), Set.empty))
+      test("blocks a malformed Host"):
+        for host <- List("", "example.com/x", "example.com:80:80", "a b", "my_app:8080") do
+          assert(!WebAppUtil.checkCsrf("POST", MultiDict(Map("origin" -> List("https://example.com"), "host" -> List(host))), Set.empty))
       test("blocks non-matching Origin and Host"):
         assert(!WebAppUtil.checkCsrf("POST", MultiDict(Map("origin" -> List("https://evil.com"), "host" -> List("example.com"))), Set.empty))
       test("allows non-matching Origin if in allowed list"):
